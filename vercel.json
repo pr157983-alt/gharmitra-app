@@ -1,0 +1,28 @@
+{
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "dist",
+  "framework": null,
+  "build": {
+    "env": {
+      "EXPO_PUBLIC_SUPABASE_URL": "https://seoedwxenattjfifivvl.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlb2Vkd3hlbmF0dGpmaWZpdnZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5MDE5MzYsImV4cCI6MjEwMDQ3NzkzNn0.sdNIAHXAFgjRjVde8EpXqUsIz9PlafsJ8DH7jLRXIHU"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!assets/|favicon\\.ico).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}
