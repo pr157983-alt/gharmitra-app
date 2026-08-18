@@ -24,7 +24,9 @@ import {
   writeServiceDescription,
   categoryParentId,
   pricingTypeLabel,
+  newAddonId,
   type PricingType,
+  type ServiceAddon,
 } from '@/lib/catalogMeta';
 
 export default function AdminServicesScreen() {
@@ -54,6 +56,10 @@ export default function AdminServicesScreen() {
   const [banners, setBanners] = useState('');
   const [svcEnabled, setSvcEnabled] = useState(true);
   const [isPopular, setIsPopular] = useState(false);
+  const [visitingFee, setVisitingFee] = useState('');
+  const [addons, setAddons] = useState<ServiceAddon[]>([]);
+  const [addonName, setAddonName] = useState('');
+  const [addonPrice, setAddonPrice] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -124,6 +130,10 @@ export default function AdminServicesScreen() {
     setBanners('');
     setSvcEnabled(true);
     setIsPopular(false);
+    setVisitingFee('');
+    setAddons([]);
+    setAddonName('');
+    setAddonPrice('');
     setSelectedCategory(categoryId || categories[0]?.id || '');
   };
 
@@ -159,6 +169,10 @@ export default function AdminServicesScreen() {
     setBanners((meta.banners || []).join('\n'));
     setSvcEnabled(meta.enabled !== false);
     setIsPopular(Boolean(svc.is_popular));
+    setVisitingFee(meta.visiting_fee ? String(meta.visiting_fee) : '');
+    setAddons(meta.addons || []);
+    setAddonName('');
+    setAddonPrice('');
     setModalVisible(true);
   };
 
@@ -208,6 +222,8 @@ export default function AdminServicesScreen() {
             estimated_time: estimatedTime.trim(),
             enabled: svcEnabled,
             banners: extraBanners,
+            visiting_fee: Number(visitingFee) || 0,
+            addons,
           },
           description
         ),
@@ -354,6 +370,8 @@ export default function AdminServicesScreen() {
                     <Text style={styles.itemMeta}>{svc.rating}</Text>
                   </View>
                   {!!meta.estimated_time && <Text style={styles.itemMeta}>Time: {meta.estimated_time}</Text>}
+                  {!!meta.visiting_fee && <Text style={styles.itemMeta}>Visit fee: ₹{meta.visiting_fee}</Text>}
+                  {!!meta.addons?.length && <Text style={styles.itemMeta}>{meta.addons.length} add-ons</Text>}
                 </View>
                 {role === 'super' ? (
                   <View style={styles.itemActions}>
@@ -508,6 +526,60 @@ export default function AdminServicesScreen() {
                     placeholderTextColor={Colors.neutral[400]}
                   />
 
+                  <Text style={styles.inputLabel}>Inspection / visiting fee</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={visitingFee}
+                    onChangeText={setVisitingFee}
+                    placeholder="Repair mana kare to minimum fee, e.g. 199"
+                    placeholderTextColor={Colors.neutral[400]}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.inputHint}>Check-up ke baad repair nahi hua to ye amount auto bill pe lagti hai.</Text>
+
+                  <Text style={styles.inputLabel}>Add-ons / extras</Text>
+                  {addons.map((a) => (
+                    <View key={a.id} style={styles.addonRow}>
+                      <Text style={styles.addonText}>
+                        {a.name} · ₹{a.price}
+                      </Text>
+                      <TouchableOpacity onPress={() => setAddons((list) => list.filter((x) => x.id !== a.id))}>
+                        <Text style={styles.removeAddon}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <View style={styles.addonForm}>
+                    <TextInput
+                      style={[styles.textInput, { flex: 1 }]}
+                      value={addonName}
+                      onChangeText={setAddonName}
+                      placeholder="Foam jet wash"
+                      placeholderTextColor={Colors.neutral[400]}
+                    />
+                    <TextInput
+                      style={[styles.textInput, { width: 90 }]}
+                      value={addonPrice}
+                      onChangeText={setAddonPrice}
+                      placeholder="200"
+                      placeholderTextColor={Colors.neutral[400]}
+                      keyboardType="numeric"
+                    />
+                    <TouchableOpacity
+                      style={styles.addAddonBtn}
+                      onPress={() => {
+                        if (!addonName.trim()) return;
+                        setAddons((list) => [
+                          ...list,
+                          { id: newAddonId(), name: addonName.trim(), price: Number(addonPrice) || 0 },
+                        ]);
+                        setAddonName('');
+                        setAddonPrice('');
+                      }}
+                    >
+                      <Text style={styles.addAddonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
                   <View style={styles.toggleRow}>
                     <Text style={styles.inputLabel}>Enable service (customer app)</Text>
                     <Switch value={svcEnabled} onValueChange={setSvcEnabled} />
@@ -649,6 +721,26 @@ const styles = StyleSheet.create({
   },
   textArea: { minHeight: 60, textAlignVertical: 'top' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  addonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.neutral[50],
+    borderRadius: Radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  addonText: { fontSize: 13, color: Colors.neutral[800], fontWeight: '600' },
+  removeAddon: { fontSize: 12, fontWeight: '700', color: Colors.error[500] },
+  addonForm: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
+  addAddonBtn: {
+    backgroundColor: Colors.primary[600],
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  addAddonText: { color: Colors.neutral[0], fontWeight: '700', fontSize: 13 },
   categoryPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
   categoryPill: {
     backgroundColor: Colors.neutral[100],

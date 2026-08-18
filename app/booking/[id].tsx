@@ -24,7 +24,7 @@ import {
 } from 'lucide-react-native';
 import { supabase, Booking, TechnicianLocation } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { parseJobMeta, paymentLabel } from '@/lib/jobMeta';
+import { parseJobMeta, paymentLabel, jobBillTotals } from '@/lib/jobMeta';
 
 const statusColors: Record<string, string> = {
   pending: Colors.warning[500],
@@ -194,23 +194,33 @@ export default function BookingDetailScreen() {
             </View>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Parts and Bill</Text>
-              <Text style={styles.detailValue}>Service charge: ₹{parseJobMeta(booking.notes).meta.service_charge ?? booking.total_amount}</Text>
-              <Text style={styles.detailValue}>
-                Replaced Part: ₹{parseJobMeta(booking.notes).meta.parts_amount ?? 0}
-                {parseJobMeta(booking.notes).meta.parts_name ? ` (${parseJobMeta(booking.notes).meta.parts_name})` : ''}
-              </Text>
-              <Text style={styles.detailValueBold}>
-                Total: ₹
-                {Number(parseJobMeta(booking.notes).meta.service_charge ?? booking.total_amount) +
-                  Number(parseJobMeta(booking.notes).meta.parts_amount ?? 0)}{' '}
-                · {paymentLabel(parseJobMeta(booking.notes).meta.payment_status)}
-              </Text>
-              {parseJobMeta(booking.notes).meta.warranty_until ? (
-                <Text style={styles.statusSub}>30-day warranty till {parseJobMeta(booking.notes).meta.warranty_until}</Text>
-              ) : null}
-              {parseJobMeta(booking.notes).meta.is_free_visit ? (
-                <Text style={styles.statusSub}>Warranty free visit booked</Text>
-              ) : null}
+              {(() => {
+                const jm = parseJobMeta(booking.notes).meta;
+                const tot = jobBillTotals(Number(booking.total_amount || 0), jm);
+                return (
+                  <>
+                    <Text style={styles.detailValue}>
+                      {tot.inspection ? 'Visiting fee' : 'Service charge'}: ₹{tot.service}
+                    </Text>
+                    {tot.addonLines.map((a) => (
+                      <Text key={a.id} style={styles.detailValue}>
+                        Add-on {a.name}: ₹{a.price}
+                      </Text>
+                    ))}
+                    <Text style={styles.detailValue}>
+                      Replaced Part: ₹{tot.parts}
+                      {jm.parts_name ? ` (${jm.parts_name})` : ''}
+                    </Text>
+                    <Text style={styles.detailValueBold}>
+                      Total: ₹{tot.total} · {paymentLabel(jm.payment_status)}
+                    </Text>
+                    {jm.warranty_until ? (
+                      <Text style={styles.statusSub}>30-day warranty till {jm.warranty_until}</Text>
+                    ) : null}
+                    {jm.is_free_visit ? <Text style={styles.statusSub}>Warranty free visit booked</Text> : null}
+                  </>
+                );
+              })()}
             </View>
           </View>
         )}

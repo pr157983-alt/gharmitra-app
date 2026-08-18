@@ -15,6 +15,8 @@ import { ArrowLeft, Check, Calendar, Clock, User, Phone, MapPin, FileText, Alert
 import { supabase, Service, ServicePackage, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { isBlacklisted } from '@/lib/customerSegment';
+import { parseService, addonSum } from '@/lib/catalogMeta';
+import { writeJobMeta } from '@/lib/jobMeta';
 
 type FormError = { title: string; message: string } | null;
 
@@ -41,7 +43,11 @@ function getNextDays(count: number) {
 }
 
 export default function NewBookingScreen() {
-  const { service, package: pkgId } = useLocalSearchParams<{ service: string; package: string }>();
+  const { service, package: pkgId, addons: addonParam } = useLocalSearchParams<{
+    service: string;
+    package: string;
+    addons?: string;
+  }>();
   const [serviceData, setServiceData] = useState<Service | null>(null);
   const [packageData, setPackageData] = useState<ServicePackage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +65,17 @@ export default function NewBookingScreen() {
   const [checkingBooking, setCheckingBooking] = useState(false);
   const [bookedBooking, setBookedBooking] = useState<Booking | null>(null);
 
+  const selectedAddons = (() => {
+    if (!serviceData) return [];
+    const ids = String(addonParam || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return (parseService(serviceData).meta.addons || []).filter((a) => ids.includes(a.id));
+  })();
+  const extrasTotal = addonSum(selectedAddons);
+  const bookingTotal = (packageData?.price || 0) + extrasTotal;
+  const visitingFee = parseService(serviceData || { description: null }).meta.visiting_fee || 0;
   const days = getNextDays(14);
 
   const loadData = useCallback(async () => {
@@ -173,8 +190,15 @@ export default function NewBookingScreen() {
       scheduled_date: selectedDate,
       scheduled_time: selectedTime,
       status: 'pending',
-      total_amount: packageData.price,
-      notes: notes.trim() || null,
+      total_amount: bookingTotal,
+      notes: writeJobMeta(
+        {
+          addons: selectedAddons,
+          service_charge: packageData.price,
+          visiting_fee: visitingFee,
+        },
+        notes.trim()
+      ),
       customer_id: customerId || null,
     }).select().single();
 
@@ -334,10 +358,18 @@ export default function NewBookingScreen() {
               <Text style={styles.summaryLabel}>Duration</Text>
               <Text style={styles.summaryValue}>{packageData.duration}</Text>
             </View>
+            {selectedAddons.map((a) => (
+              <View key={a.id} style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Add-on</Text>
+                <Text style={styles.summaryValue}>
+                  {a.name} +₹{a.price}
+                </Text>
+              </View>
+            ))}
             <View style={styles.summaryDivider} />
             <View style={styles.summaryRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotal}>₹{packageData.price}</Text>
+              <Text style={styles.summaryTotal}>₹{bookingTotal}</Text>
             </View>
           </View>
         )}
@@ -465,7 +497,7 @@ export default function NewBookingScreen() {
       <View style={styles.bottomBar}>
         <View>
           <Text style={styles.bottomLabel}>Total Amount</Text>
-          <Text style={styles.bottomPrice}>₹{packageData?.price || 0}</Text>
+          <Text style={styles.bottomPrice}>₹{bookingTotal}</Text>
         </View>
         <TouchableOpacity
           style={[styles.confirmButton, (submitting || !!existingBooking) && styles.confirmButtonDisabled]}

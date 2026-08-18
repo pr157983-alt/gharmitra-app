@@ -1,5 +1,11 @@
 export type PaymentStatus = 'unpaid' | 'cod' | 'online';
 
+export type JobAddon = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export type JobMeta = {
   payment_status?: PaymentStatus;
   cancel_reason?: string;
@@ -14,6 +20,9 @@ export type JobMeta = {
   before_photo_at?: string;
   after_photo_at?: string;
   extra_technician_ids?: string[];
+  addons?: JobAddon[];
+  inspection_only?: boolean;
+  visiting_fee?: number;
 };
 
 const START = '__GM__';
@@ -47,4 +56,38 @@ export function addDays(isoDate: string, days: number) {
   const d = new Date(isoDate);
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+export function addonSum(addons?: JobAddon[]) {
+  return (addons || []).reduce((s, a) => s + Number(a.price || 0), 0);
+}
+
+export function jobBillTotals(bookingAmount: number, meta: JobMeta) {
+  const addons = meta.addons || [];
+  const addonAmt = addonSum(addons);
+  if (meta.inspection_only) {
+    const fee = Number(meta.visiting_fee ?? meta.service_charge ?? 0);
+    return {
+      inspection: true,
+      service: fee,
+      addons: 0,
+      addonLines: [] as JobAddon[],
+      parts: 0,
+      total: fee,
+    };
+  }
+  const stored = meta.service_charge;
+  const service =
+    stored != null && stored !== undefined
+      ? Number(stored)
+      : Math.max(0, Number(bookingAmount || 0) - addonAmt);
+  const parts = Number(meta.parts_amount ?? 0);
+  return {
+    inspection: false,
+    service,
+    addons: addonAmt,
+    addonLines: addons,
+    parts,
+    total: service + addonAmt + parts,
+  };
 }

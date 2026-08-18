@@ -4,7 +4,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { FileText } from 'lucide-react-native';
 import { supabase, Booking, Technician } from '@/lib/supabase';
 import { AdminColors, formatINR, shortId } from '@/lib/admin';
-import { parseJobMeta, paymentLabel } from '@/lib/jobMeta';
+import { parseJobMeta, paymentLabel, jobBillTotals } from '@/lib/jobMeta';
 
 export default function BillScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,8 +45,7 @@ export default function BillScreen() {
   }
 
   const meta = parseJobMeta(booking.notes).meta;
-  const serviceCharge = Number(meta.service_charge ?? booking.total_amount ?? 0);
-  const partsAmt = Number(meta.parts_amount ?? 0);
+  const totals = jobBillTotals(Number(booking.total_amount || 0), meta);
   const dateLabel = new Date(booking.scheduled_date || booking.created_at).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -56,31 +55,38 @@ export default function BillScreen() {
   const lines = [
     {
       sn: 1,
-      desc: booking.service_name,
+      desc: totals.inspection ? `${booking.service_name} (Inspection / visiting)` : booking.service_name,
       qty: '1 Service',
-      rate: serviceCharge,
-      amount: serviceCharge,
+      rate: totals.service,
+      amount: totals.service,
     },
-    ...(partsAmt > 0
+    ...totals.addonLines.map((a, i) => ({
+      sn: 2 + i,
+      desc: `Add-on: ${a.name}`,
+      qty: '1 Extra',
+      rate: Number(a.price),
+      amount: Number(a.price),
+    })),
+    ...(totals.parts > 0
       ? [
           {
-            sn: 2,
+            sn: 2 + totals.addonLines.length,
             desc: `Replaced Part${meta.parts_name ? ` (${meta.parts_name})` : ''}`,
             qty: '1 Pcs',
-            rate: partsAmt,
-            amount: partsAmt,
+            rate: totals.parts,
+            amount: totals.parts,
           },
         ]
       : []),
   ];
 
   const calc = {
-    gross: serviceCharge + partsAmt,
+    gross: totals.total,
     discount: 0,
-    taxable: serviceCharge + partsAmt,
-    cgst: +((serviceCharge + partsAmt) * 0.09).toFixed(2),
-    sgst: +((serviceCharge + partsAmt) * 0.09).toFixed(2),
-    payable: +((serviceCharge + partsAmt) * 1.18).toFixed(2),
+    taxable: totals.total,
+    cgst: +(totals.total * 0.09).toFixed(2),
+    sgst: +(totals.total * 0.09).toFixed(2),
+    payable: +(totals.total * 1.18).toFixed(2),
   };
 
   return (

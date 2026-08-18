@@ -2,6 +2,12 @@ import { Service, ServiceCategory } from '@/lib/supabase';
 
 export type PricingType = 'fixed' | 'hourly' | 'quote';
 
+export type ServiceAddon = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export type CategoryMeta = {
   parent_id?: string | null;
   enabled?: boolean;
@@ -12,6 +18,8 @@ export type ServiceMeta = {
   estimated_time?: string;
   enabled?: boolean;
   banners?: string[];
+  addons?: ServiceAddon[];
+  visiting_fee?: number;
 };
 
 const START = '__GM__';
@@ -56,6 +64,8 @@ export function writeServiceDescription(meta: ServiceMeta, description: string) 
       estimated_time: meta.estimated_time || '',
       enabled: meta.enabled !== false,
       banners: (meta.banners || []).filter(Boolean),
+      addons: (meta.addons || []).filter((a) => a.name?.trim()),
+      visiting_fee: Number(meta.visiting_fee || 0),
     },
     description.trim()
   );
@@ -105,4 +115,12 @@ export function serviceBanners(svc: Pick<Service, 'image_url' | 'description'>) 
   const extra = parseService(svc).meta.banners || [];
   const urls = [svc.image_url, ...extra].filter((u): u is string => Boolean(u && u.trim()));
   return [...new Set(urls)];
+}
+
+export function newAddonId() {
+  return `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function addonSum(addons?: ServiceAddon[]) {
+  return (addons || []).reduce((s, a) => s + Number(a.price || 0), 0);
 }

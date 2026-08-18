@@ -12,9 +12,10 @@ import {
   Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { supabase, Booking, Technician } from '@/lib/supabase';
+import { supabase, Booking, Technician, Service } from '@/lib/supabase';
 import { AdminColors, formatINR, shortId, statusColor } from '@/lib/admin';
-import { JobMeta, addDays, parseJobMeta, paymentLabel, writeJobMeta } from '@/lib/jobMeta';
+import { JobMeta, addDays, jobBillTotals, parseJobMeta, paymentLabel, writeJobMeta } from '@/lib/jobMeta';
+import { parseService } from '@/lib/catalogMeta';
 
 const PAYMENTS = [
   { id: 'unpaid', label: 'Unpaid' },
@@ -36,6 +37,8 @@ export default function AdminJobDetailsScreen() {
   const [cancelReason, setCancelReason] = useState('');
   const [techId, setTechId] = useState<string | null>(null);
   const [extraIds, setExtraIds] = useState<string[]>([]);
+  const [catalogVisit, setCatalogVisit] = useState(0);
+  const [catalogAddons, setCatalogAddons] = useState<{ id: string; name: string; price: number }[]>([]);
 
   const load = useCallback(async () => {
     const [b, t] = await Promise.all([
@@ -55,6 +58,17 @@ export default function AdminJobDetailsScreen() {
       setRescheduleReason(parsed.meta.reschedule_reason || '');
       setTechId(row.technician_id);
       setExtraIds(parsed.meta.extra_technician_ids || []);
+      if (row.service_id) {
+        const s = await supabase.from('services').select('*').eq('id', row.service_id).maybeSingle();
+        if (s.data) {
+          const sm = parseService(s.data as Service).meta;
+          setCatalogVisit(Number(sm.visiting_fee || 0));
+          setCatalogAddons(sm.addons || []);
+          if (parsed.meta.visiting_fee == null && sm.visiting_fee) {
+            setMeta({ ...parsed.meta, visiting_fee: sm.visiting_fee });
+          }
+        }
+      }
     }
     setLoading(false);
   }, [id]);
@@ -68,11 +82,10 @@ export default function AdminJobDetailsScreen() {
   const completed = booking?.status === 'completed';
   const st = statusColor(booking?.status || 'pending');
 
-  const bill = useMemo(() => {
-    const service = Number(meta.service_charge ?? booking?.total_amount ?? 0);
-    const parts = Number(meta.parts_amount ?? 0);
-    return { service, parts, total: service + parts };
-  }, [meta, booking]);
+  const bill = useMemo(
+    () => jobBillTotals(Number(booking?.total_amount || 0), meta),
+    [meta, booking]
+  );
 
   const patchMeta = (p: Partial<JobMeta>) => setMeta((m) => ({ ...m, ...p }));
 
@@ -87,6 +100,7 @@ export default function AdminJobDetailsScreen() {
         scheduled_date: date,
         scheduled_time: time,
         technician_id: techId,
+        total_amount: jobBillTotals(Number(booking.total_amount || 0), nextMeta).total,
         ...extra,
       })
       .eq('id', booking.id);
@@ -304,12 +318,71 @@ export default function AdminJobDetailsScreen() {
           </View>
 
           <View style={styles.card}>
+            <Text style={styles.h2}>Inspection / visiting</Text>
+            <Text style={styles.muted}>
+              Repair mana kiya / sirf check-up → visiting fee auto. Catalog fee: {formatINR(catalogVisit || meta.visiting_fee || 0)}
+            </Text>
+            <TouchableOpacity
+              style={[styles.chip, meta.inspection_only && styles.chipOn, { marginTop: 8, alignSelf: 'flex-start' }]}
+              onPress={() =>
+                patchMeta({
+                  inspection_only: !meta.inspection_only,
+                  visiting_fee: Number(meta.visiting_fee || catalogVisit || 0),
+                })
+              }
+            >
+              <Text style={[styles.chipText, meta.inspection_only && styles.chipTextOn]}>
+                {meta.inspection_only ? 'Inspection only ON' : 'Sirf check-up / repair mana'}
+              </Text>
+            </TouchableOpacity>
+            {meta.inspection_only && (
+              <Text style={styles.p}>Bill = visiting fee {formatINR(bill.service)} (add-ons/parts skip)</Text>
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.h2}>Add-ons</Text>
+            {(meta.addons || []).map((a) => (
+              <TouchableOpacity
+                key={a.id}
+                onPress={() => patchMeta({ addons: (meta.addons || []).filter((x) => x.id !== a.id) })}
+              >
+                <Text style={styles.p}>
+                  {a.name} · {formatINR(a.price)} · tap to remove
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {catalogAddons
+              .filter((a) => !(meta.addons || []).some((x) => x.id === a.id))
+              .map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={[styles.chip, { marginTop: 6, alignSelf: 'flex-start' }]}
+                  onPress={() => patchMeta({ addons: [...(meta.addons || []), a] })}
+                >
+                  <Text style={styles.chipText}>
+                    + {a.name} ₹{a.price}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            {(meta.addons || []).length === 0 && catalogAddons.length === 0 && (
+              <Text style={styles.muted}>Is service pe add-on nahi.</Text>
+            )}
+          </View>
+
+          <View style={styles.card}>
             <Text style={styles.h2}>Parts and Bill</Text>
             <TextInput style={styles.input} placeholder="Service charge" keyboardType="numeric" value={String(meta.service_charge ?? booking.total_amount)} onChangeText={(v) => patchMeta({ service_charge: Number(v) || 0 })} />
             <TextInput style={styles.input} placeholder="Replaced part name (Capacitor)" value={meta.parts_name || ''} onChangeText={(v) => patchMeta({ parts_name: v })} />
             <TextInput style={styles.input} placeholder="Replaced part amount" keyboardType="numeric" value={String(meta.parts_amount ?? '')} onChangeText={(v) => patchMeta({ parts_amount: Number(v) || 0 })} />
             <View style={styles.billBox}>
-              <Text style={styles.p}>Service charge: {formatINR(bill.service)}</Text>
+              {bill.inspection && <Text style={styles.p}>Inspection visiting fee: {formatINR(bill.service)}</Text>}
+              {!bill.inspection && <Text style={styles.p}>Service charge: {formatINR(bill.service)}</Text>}
+              {bill.addonLines.map((a) => (
+                <Text key={a.id} style={styles.p}>
+                  Add-on {a.name}: {formatINR(a.price)}
+                </Text>
+              ))}
               <Text style={styles.p}>
                 Replaced Part: {formatINR(bill.parts)} {meta.parts_name ? `(${meta.parts_name})` : ''}
               </Text>

@@ -16,7 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Star, Check, Clock, ChevronRight, Calendar } from 'lucide-react-native';
 import { supabase, Service, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { isServiceEnabled, parseService, pricingLabel, serviceBanners } from '@/lib/catalogMeta';
+import { addonSum, isServiceEnabled, parseService, pricingLabel, serviceBanners } from '@/lib/catalogMeta';
 
 export default function ServiceDetailScreen() {
   const { id, category } = useLocalSearchParams<{ id: string; category?: string }>();
@@ -24,6 +24,7 @@ export default function ServiceDetailScreen() {
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -65,6 +66,7 @@ export default function ServiceDetailScreen() {
   const switchService = (svc: Service) => {
     setSelectedService(svc);
     setSelectedPackage(null);
+    setSelectedAddonIds([]);
     supabase
       .from('service_packages')
       .select('*')
@@ -80,7 +82,8 @@ export default function ServiceDetailScreen() {
     }
     const pkg = packages.find((p) => p.id === selectedPackage);
     if (!pkg) return;
-    router.push(`/booking/new?service=${selectedService.id}&package=${pkg.id}`);
+    const addonQ = selectedAddonIds.length ? `&addons=${selectedAddonIds.join(',')}` : '';
+    router.push(`/booking/new?service=${selectedService.id}&package=${pkg.id}${addonQ}`);
   };
 
   if (loading) {
@@ -219,6 +222,39 @@ export default function ServiceDetailScreen() {
           )}
         </View>
 
+        {(parseService(selectedService).meta.addons || []).length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Add-ons / extras</Text>
+            {(parseService(selectedService).meta.addons || []).map((a) => {
+              const on = selectedAddonIds.includes(a.id);
+              return (
+                <TouchableOpacity
+                  key={a.id}
+                  style={[styles.packageCard, on && styles.packageCardSelected]}
+                  onPress={() =>
+                    setSelectedAddonIds((ids) => (ids.includes(a.id) ? ids.filter((x) => x !== a.id) : [...ids, a.id]))
+                  }
+                >
+                  <View style={styles.packageHeader}>
+                    <View style={styles.packageRadio}>{on && <Check size={14} color={Colors.neutral[0]} />}</View>
+                    <View style={styles.packageInfo}>
+                      <Text style={styles.packageName}>{a.name}</Text>
+                    </View>
+                    <Text style={styles.packagePrice}>+₹{a.price}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+        {!!parseService(selectedService).meta.visiting_fee && (
+          <View style={styles.section}>
+            <Text style={styles.visitNote}>
+              Inspection only: agar repair nahi karaya to visiting fee ₹{parseService(selectedService).meta.visiting_fee} lagegi.
+            </Text>
+          </View>
+        )}
+
         {/* Trust badges */}
         <View style={styles.trustSection}>
           <View style={styles.trustItem}>
@@ -245,7 +281,9 @@ export default function ServiceDetailScreen() {
             <>
               <Text style={styles.bottomLabel}>Total Price</Text>
               <Text style={styles.bottomPrice}>
-                ₹{packages.find((p) => p.id === selectedPackage)?.price || selectedService.starting_price}
+                ₹
+                {(packages.find((p) => p.id === selectedPackage)?.price || selectedService.starting_price) +
+                  addonSum((parseService(selectedService).meta.addons || []).filter((a) => selectedAddonIds.includes(a.id)))}
               </Text>
             </>
           ) : (
@@ -311,6 +349,13 @@ const styles = StyleSheet.create({
   },
   bannerRow: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm },
   extraBanner: { width: 140, height: 80, borderRadius: Radius.md, backgroundColor: Colors.neutral[200] },
+  visitNote: {
+    fontSize: 13,
+    color: Colors.neutral[600],
+    backgroundColor: Colors.primary[50],
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+  },
   serviceInfo: {
     backgroundColor: Colors.neutral[0],
     padding: Spacing.lg,
