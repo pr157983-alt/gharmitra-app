@@ -23,6 +23,12 @@ export type JobMeta = {
   addons?: JobAddon[];
   inspection_only?: boolean;
   visiting_fee?: number;
+  city?: string;
+  pincode?: string;
+  location_extra?: number;
+  location_label?: string;
+  surge_extra?: number;
+  surge_label?: string;
 };
 
 const START = '__GM__';
@@ -73,21 +79,27 @@ export function jobBillTotals(bookingAmount: number, meta: JobMeta) {
       addons: 0,
       addonLines: [] as JobAddon[],
       parts: 0,
+      location: 0,
+      surge: 0,
       total: fee,
     };
   }
+  const parts = Number(meta.parts_amount ?? 0);
+  const location = Number(meta.location_extra || 0);
+  const surge = Number(meta.surge_extra || 0);
   const stored = meta.service_charge;
   const service =
     stored != null && stored !== undefined
       ? Number(stored)
-      : Math.max(0, Number(bookingAmount || 0) - addonAmt);
-  const parts = Number(meta.parts_amount ?? 0);
+      : Math.max(0, Number(bookingAmount || 0) - addonAmt - location - surge);
   return {
     inspection: false,
     service,
     addons: addonAmt,
     addonLines: addons,
     parts,
-    total: service + addonAmt + parts,
+    location,
+    surge,
+    total: service + addonAmt + parts + location + surge,
   };
 }

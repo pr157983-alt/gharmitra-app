@@ -207,6 +207,18 @@ export default function BookingDetailScreen() {
                         Add-on {a.name}: ₹{a.price}
                       </Text>
                     ))}
+                    {tot.location > 0 ? (
+                      <Text style={styles.detailValue}>
+                        Location extra: ₹{tot.location}
+                        {jm.location_label ? ` (${jm.location_label})` : ''}
+                      </Text>
+                    ) : null}
+                    {tot.surge > 0 ? (
+                      <Text style={styles.detailValue}>
+                        Peak / surge: ₹{tot.surge}
+                        {jm.surge_label ? ` (${jm.surge_label})` : ''}
+                      </Text>
+                    ) : null}
                     <Text style={styles.detailValue}>
                       Replaced Part: ₹{tot.parts}
                       {jm.parts_name ? ` (${jm.parts_name})` : ''}

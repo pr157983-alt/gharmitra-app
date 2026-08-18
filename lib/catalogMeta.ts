@@ -8,6 +8,22 @@ export type ServiceAddon = {
   price: number;
 };
 
+export type LocationPrice = {
+  id: string;
+  city: string;
+  pincode: string;
+  extra: number;
+};
+
+export type SurgeRule = {
+  id: string;
+  label: string;
+  start_hour: number;
+  end_hour: number;
+  extra: number;
+  percent: number;
+};
+
 export type CategoryMeta = {
   parent_id?: string | null;
   enabled?: boolean;
@@ -20,6 +36,8 @@ export type ServiceMeta = {
   banners?: string[];
   addons?: ServiceAddon[];
   visiting_fee?: number;
+  location_prices?: LocationPrice[];
+  surge_rules?: SurgeRule[];
 };
 
 const START = '__GM__';
@@ -66,6 +84,8 @@ export function writeServiceDescription(meta: ServiceMeta, description: string) 
       banners: (meta.banners || []).filter(Boolean),
       addons: (meta.addons || []).filter((a) => a.name?.trim()),
       visiting_fee: Number(meta.visiting_fee || 0),
+      location_prices: meta.location_prices || [],
+      surge_rules: meta.surge_rules || [],
     },
     description.trim()
   );
@@ -123,4 +143,70 @@ export function newAddonId() {
 
 export function addonSum(addons?: ServiceAddon[]) {
   return (addons || []).reduce((s, a) => s + Number(a.price || 0), 0);
+}
+
+export function parseSlotHour(slot: string): number {
+  const m = String(slot || '')
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) {
+    const n = Number(slot);
+    return Number.isFinite(n) ? n : 12;
+  }
+  let h = Number(m[1]) % 12;
+  if (m[3].toUpperCase() === 'PM') h += 12;
+  return h;
+}
+
+export function hourInWindow(hour: number, start: number, end: number) {
+  if (start === end) return true;
+  if (start < end) return hour >= start && hour < end;
+  return hour >= start || hour < end;
+}
+
+export function matchLocationPrice(rules: LocationPrice[] | undefined, city: string, pincode: string) {
+  const list = rules || [];
+  const pin = String(pincode || '').replace(/\D/g, '');
+  const cityN = String(city || '').trim().toLowerCase();
+  const pinHits = list
+    .filter((r) => {
+      const p = String(r.pincode || '').replace(/\D/g, '');
+      return p && pin && pin.startsWith(p);
+    })
+    .sort((a, b) => String(b.pincode).length - String(a.pincode).length);
+  if (pinHits[0]) return pinHits[0];
+  if (!cityN) return null;
+  const cityHits = list.filter((r) => {
+    const c = String(r.city || '').trim().toLowerCase();
+    return c && (cityN.includes(c) || c.includes(cityN));
+  });
+  if (!cityHits.length) return null;
+  return cityHits.sort((a, b) => Number(b.extra) - Number(a.extra))[0];
+}
+
+export function matchSurgeRules(rules: SurgeRule[] | undefined, slot: string) {
+  const hour = parseSlotHour(slot);
+  return (rules || []).filter((r) => hourInWindow(hour, Number(r.start_hour), Number(r.end_hour)));
+}
+
+export function computeLocationAndSurge(
+  meta: ServiceMeta,
+  city: string,
+  pincode: string,
+  slot: string,
+  baseAmount: number
+) {
+  const loc = matchLocationPrice(meta.location_prices, city, pincode);
+  const location_extra = Number(loc?.extra || 0);
+  const location_label = loc
+    ? loc.pincode
+      ? `${loc.city || 'Area'} ${loc.pincode}`
+      : loc.city
+    : '';
+  const surges = matchSurgeRules(meta.surge_rules, slot);
+  const surge_flat = surges.reduce((s, r) => s + Number(r.extra || 0), 0);
+  const surge_percent = surges.reduce((s, r) => s + Number(r.percent || 0), 0);
+  const surge_extra = Math.round(surge_flat + ((baseAmount + location_extra) * surge_percent) / 100);
+  const surge_label = surges.map((r) => r.label || 'Peak').join(', ');
+  return { location_extra, location_label, surge_extra, surge_label, surges };
 }

@@ -67,10 +67,32 @@ export default function BillScreen() {
       rate: Number(a.price),
       amount: Number(a.price),
     })),
-    ...(totals.parts > 0
+    ...(totals.location > 0
       ? [
           {
             sn: 2 + totals.addonLines.length,
+            desc: `Location extra${meta.location_label ? ` (${meta.location_label})` : ''}`,
+            qty: '1',
+            rate: totals.location,
+            amount: totals.location,
+          },
+        ]
+      : []),
+    ...(totals.surge > 0
+      ? [
+          {
+            sn: 3 + totals.addonLines.length,
+            desc: `Peak / surge${meta.surge_label ? ` (${meta.surge_label})` : ''}`,
+            qty: '1',
+            rate: totals.surge,
+            amount: totals.surge,
+          },
+        ]
+      : []),
+    ...(totals.parts > 0
+      ? [
+          {
+            sn: 4 + totals.addonLines.length,
             desc: `Replaced Part${meta.parts_name ? ` (${meta.parts_name})` : ''}`,
             qty: '1 Pcs',
             rate: totals.parts,

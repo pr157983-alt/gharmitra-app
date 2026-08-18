@@ -254,6 +254,14 @@ export default function ServiceDetailScreen() {
             </Text>
           </View>
         )}
+        {(!!parseService(selectedService).meta.location_prices?.length ||
+          !!parseService(selectedService).meta.surge_rules?.length) && (
+          <View style={styles.section}>
+            <Text style={styles.visitNote}>
+              City / pincode aur peak hours (raat) pe extra charge booking pe auto lagega.
+            </Text>
+          </View>
+        )}
 
         {/* Trust badges */}
         <View style={styles.trustSection}>

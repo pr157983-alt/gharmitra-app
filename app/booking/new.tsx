@@ -15,7 +15,7 @@ import { ArrowLeft, Check, Calendar, Clock, User, Phone, MapPin, FileText, Alert
 import { supabase, Service, ServicePackage, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { isBlacklisted } from '@/lib/customerSegment';
-import { parseService, addonSum } from '@/lib/catalogMeta';
+import { parseService, addonSum, computeLocationAndSurge } from '@/lib/catalogMeta';
 import { writeJobMeta } from '@/lib/jobMeta';
 
 type FormError = { title: string; message: string } | null;
@@ -24,6 +24,7 @@ const timeSlots = [
   '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM',
   '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM',
   '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM',
+  '08:00 PM', '09:00 PM', '10:00 PM',
 ];
 
 function getNextDays(count: number) {
@@ -58,6 +59,8 @@ export default function NewBookingScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [pincode, setPincode] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -74,8 +77,11 @@ export default function NewBookingScreen() {
     return (parseService(serviceData).meta.addons || []).filter((a) => ids.includes(a.id));
   })();
   const extrasTotal = addonSum(selectedAddons);
-  const bookingTotal = (packageData?.price || 0) + extrasTotal;
-  const visitingFee = parseService(serviceData || { description: null }).meta.visiting_fee || 0;
+  const svcMeta = parseService(serviceData || { description: null }).meta;
+  const baseAmount = (packageData?.price || 0) + extrasTotal;
+  const pricing = computeLocationAndSurge(svcMeta, city, pincode, selectedTime, baseAmount);
+  const bookingTotal = baseAmount + pricing.location_extra + pricing.surge_extra;
+  const visitingFee = svcMeta.visiting_fee || 0;
   const days = getNextDays(14);
 
   const loadData = useCallback(async () => {
@@ -186,7 +192,7 @@ export default function NewBookingScreen() {
       package_name: packageData.name,
       customer_name: name.trim(),
       phone: phone.trim(),
-      address: address.trim(),
+      address: [address.trim(), city.trim(), pincode.trim()].filter(Boolean).join(', '),
       scheduled_date: selectedDate,
       scheduled_time: selectedTime,
       status: 'pending',
@@ -196,6 +202,12 @@ export default function NewBookingScreen() {
           addons: selectedAddons,
           service_charge: packageData.price,
           visiting_fee: visitingFee,
+          city: city.trim(),
+          pincode: pincode.trim(),
+          location_extra: pricing.location_extra,
+          location_label: pricing.location_label,
+          surge_extra: pricing.surge_extra,
+          surge_label: pricing.surge_label,
         },
         notes.trim()
       ),
@@ -366,7 +378,22 @@ export default function NewBookingScreen() {
                 </Text>
               </View>
             ))}
-            <View style={styles.summaryDivider} />
+            {pricing.location_extra > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Location</Text>
+                <Text style={styles.summaryValue}>
+                  {pricing.location_label} +₹{pricing.location_extra}
+                </Text>
+              </View>
+            )}
+            {pricing.surge_extra > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Peak / surge</Text>
+                <Text style={styles.summaryValue}>
+                  {pricing.surge_label || 'Peak'} +₹{pricing.surge_extra}
+                </Text>
+              </View>
+            )}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
               <Text style={styles.summaryTotal}>₹{bookingTotal}</Text>
@@ -436,9 +463,35 @@ export default function NewBookingScreen() {
               numberOfLines={2}
             />
           </View>
+          <View style={styles.inputDivider} />
+          <View style={styles.inputRow}>
+            <MapPin size={18} color={Colors.neutral[400]} />
+            <TextInput
+              style={styles.input}
+              placeholder="City (Delhi, Patna...)"
+              placeholderTextColor={Colors.neutral[400]}
+              value={city}
+              onChangeText={setCity}
+            />
+          </View>
+          <View style={styles.inputDivider} />
+          <View style={styles.inputRow}>
+            <MapPin size={18} color={Colors.neutral[400]} />
+            <TextInput
+              style={styles.input}
+              placeholder="Pincode"
+              placeholderTextColor={Colors.neutral[400]}
+              value={pincode}
+              onChangeText={setPincode}
+              keyboardType="numeric"
+              maxLength={6}
+            />
+          </View>
         </View>
+        {(svcMeta.location_prices?.length || svcMeta.surge_rules?.length) ? (
+          <Text style={styles.checkingText}>City/pincode aur night slot pe extra charge auto lagega.</Text>
+        ) : null}
 
-        {/* Date selection */}
         <Text style={styles.sectionTitle}>Select Date</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateScroll}>
           {days.map((d) => (

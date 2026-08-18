@@ -27,6 +27,8 @@ import {
   newAddonId,
   type PricingType,
   type ServiceAddon,
+  type LocationPrice,
+  type SurgeRule,
 } from '@/lib/catalogMeta';
 
 export default function AdminServicesScreen() {
@@ -60,6 +62,16 @@ export default function AdminServicesScreen() {
   const [addons, setAddons] = useState<ServiceAddon[]>([]);
   const [addonName, setAddonName] = useState('');
   const [addonPrice, setAddonPrice] = useState('');
+  const [locationPrices, setLocationPrices] = useState<LocationPrice[]>([]);
+  const [locCity, setLocCity] = useState('');
+  const [locPin, setLocPin] = useState('');
+  const [locExtra, setLocExtra] = useState('');
+  const [surgeRules, setSurgeRules] = useState<SurgeRule[]>([]);
+  const [surgeLabel, setSurgeLabel] = useState('Night / peak');
+  const [surgeStart, setSurgeStart] = useState('20');
+  const [surgeEnd, setSurgeEnd] = useState('7');
+  const [surgeExtra, setSurgeExtra] = useState('');
+  const [surgePercent, setSurgePercent] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -134,6 +146,16 @@ export default function AdminServicesScreen() {
     setAddons([]);
     setAddonName('');
     setAddonPrice('');
+    setLocationPrices([]);
+    setLocCity('');
+    setLocPin('');
+    setLocExtra('');
+    setSurgeRules([]);
+    setSurgeLabel('Night / peak');
+    setSurgeStart('20');
+    setSurgeEnd('7');
+    setSurgeExtra('');
+    setSurgePercent('');
     setSelectedCategory(categoryId || categories[0]?.id || '');
   };
 
@@ -173,6 +195,8 @@ export default function AdminServicesScreen() {
     setAddons(meta.addons || []);
     setAddonName('');
     setAddonPrice('');
+    setLocationPrices(meta.location_prices || []);
+    setSurgeRules(meta.surge_rules || []);
     setModalVisible(true);
   };
 
@@ -224,6 +248,8 @@ export default function AdminServicesScreen() {
             banners: extraBanners,
             visiting_fee: Number(visitingFee) || 0,
             addons,
+            location_prices: locationPrices,
+            surge_rules: surgeRules,
           },
           description
         ),
@@ -372,6 +398,8 @@ export default function AdminServicesScreen() {
                   {!!meta.estimated_time && <Text style={styles.itemMeta}>Time: {meta.estimated_time}</Text>}
                   {!!meta.visiting_fee && <Text style={styles.itemMeta}>Visit fee: ₹{meta.visiting_fee}</Text>}
                   {!!meta.addons?.length && <Text style={styles.itemMeta}>{meta.addons.length} add-ons</Text>}
+                  {!!meta.location_prices?.length && <Text style={styles.itemMeta}>{meta.location_prices.length} city rates</Text>}
+                  {!!meta.surge_rules?.length && <Text style={styles.itemMeta}>{meta.surge_rules.length} surge</Text>}
                 </View>
                 {role === 'super' ? (
                   <View style={styles.itemActions}>
@@ -574,6 +602,80 @@ export default function AdminServicesScreen() {
                         ]);
                         setAddonName('');
                         setAddonPrice('');
+                      }}
+                    >
+                      <Text style={styles.addAddonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Location price (city / pincode extra)</Text>
+                  <Text style={styles.inputHint}>Pincode match pehle, phir city. Extra amount base ke upar.</Text>
+                  {locationPrices.map((r) => (
+                    <View key={r.id} style={styles.addonRow}>
+                      <Text style={styles.addonText}>
+                        {r.city || '—'} {r.pincode ? `· ${r.pincode}` : ''} · +₹{r.extra}
+                      </Text>
+                      <TouchableOpacity onPress={() => setLocationPrices((list) => list.filter((x) => x.id !== r.id))}>
+                        <Text style={styles.removeAddon}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <View style={styles.addonForm}>
+                    <TextInput style={[styles.textInput, { flex: 1 }]} value={locCity} onChangeText={setLocCity} placeholder="Delhi" placeholderTextColor={Colors.neutral[400]} />
+                    <TextInput style={[styles.textInput, { width: 80 }]} value={locPin} onChangeText={setLocPin} placeholder="110001" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TextInput style={[styles.textInput, { width: 70 }]} value={locExtra} onChangeText={setLocExtra} placeholder="+₹" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TouchableOpacity
+                      style={styles.addAddonBtn}
+                      onPress={() => {
+                        if (!locCity.trim() && !locPin.trim()) return;
+                        setLocationPrices((list) => [
+                          ...list,
+                          { id: newAddonId(), city: locCity.trim(), pincode: locPin.trim(), extra: Number(locExtra) || 0 },
+                        ]);
+                        setLocCity('');
+                        setLocPin('');
+                        setLocExtra('');
+                      }}
+                    >
+                      <Text style={styles.addAddonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Peak / surge (time extra)</Text>
+                  <Text style={styles.inputHint}>Hours 0–23. Night example: 20 → 7 (+₹ or %). Overnight window OK.</Text>
+                  {surgeRules.map((r) => (
+                    <View key={r.id} style={styles.addonRow}>
+                      <Text style={styles.addonText}>
+                        {r.label}: {r.start_hour}–{r.end_hour}h · +₹{r.extra}
+                        {r.percent ? ` · ${r.percent}%` : ''}
+                      </Text>
+                      <TouchableOpacity onPress={() => setSurgeRules((list) => list.filter((x) => x.id !== r.id))}>
+                        <Text style={styles.removeAddon}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TextInput style={styles.textInput} value={surgeLabel} onChangeText={setSurgeLabel} placeholder="Night peak" placeholderTextColor={Colors.neutral[400]} />
+                  <View style={styles.addonForm}>
+                    <TextInput style={[styles.textInput, { width: 54 }]} value={surgeStart} onChangeText={setSurgeStart} placeholder="20" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TextInput style={[styles.textInput, { width: 54 }]} value={surgeEnd} onChangeText={setSurgeEnd} placeholder="7" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TextInput style={[styles.textInput, { width: 70 }]} value={surgeExtra} onChangeText={setSurgeExtra} placeholder="+₹" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TextInput style={[styles.textInput, { width: 54 }]} value={surgePercent} onChangeText={setSurgePercent} placeholder="%" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+                    <TouchableOpacity
+                      style={styles.addAddonBtn}
+                      onPress={() => {
+                        setSurgeRules((list) => [
+                          ...list,
+                          {
+                            id: newAddonId(),
+                            label: surgeLabel.trim() || 'Peak',
+                            start_hour: Number(surgeStart) || 0,
+                            end_hour: Number(surgeEnd) || 0,
+                            extra: Number(surgeExtra) || 0,
+                            percent: Number(surgePercent) || 0,
+                          },
+                        ]);
+                        setSurgeExtra('');
+                        setSurgePercent('');
                       }}
                     >
                       <Text style={styles.addAddonText}>Add</Text>

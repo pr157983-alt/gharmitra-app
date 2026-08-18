@@ -373,6 +373,8 @@ export default function AdminJobDetailsScreen() {
           <View style={styles.card}>
             <Text style={styles.h2}>Parts and Bill</Text>
             <TextInput style={styles.input} placeholder="Service charge" keyboardType="numeric" value={String(meta.service_charge ?? booking.total_amount)} onChangeText={(v) => patchMeta({ service_charge: Number(v) || 0 })} />
+            <TextInput style={styles.input} placeholder="Location extra" keyboardType="numeric" value={String(meta.location_extra ?? '')} onChangeText={(v) => patchMeta({ location_extra: Number(v) || 0 })} />
+            <TextInput style={styles.input} placeholder="Surge extra" keyboardType="numeric" value={String(meta.surge_extra ?? '')} onChangeText={(v) => patchMeta({ surge_extra: Number(v) || 0 })} />
             <TextInput style={styles.input} placeholder="Replaced part name (Capacitor)" value={meta.parts_name || ''} onChangeText={(v) => patchMeta({ parts_name: v })} />
             <TextInput style={styles.input} placeholder="Replaced part amount" keyboardType="numeric" value={String(meta.parts_amount ?? '')} onChangeText={(v) => patchMeta({ parts_amount: Number(v) || 0 })} />
             <View style={styles.billBox}>
@@ -383,6 +385,16 @@ export default function AdminJobDetailsScreen() {
                   Add-on {a.name}: {formatINR(a.price)}
                 </Text>
               ))}
+              {bill.location > 0 && (
+                <Text style={styles.p}>
+                  Location extra: {formatINR(bill.location)} {meta.location_label ? `(${meta.location_label})` : ''}
+                </Text>
+              )}
+              {bill.surge > 0 && (
+                <Text style={styles.p}>
+                  Peak / surge: {formatINR(bill.surge)} {meta.surge_label ? `(${meta.surge_label})` : ''}
+                </Text>
+              )}
               <Text style={styles.p}>
                 Replaced Part: {formatINR(bill.parts)} {meta.parts_name ? `(${meta.parts_name})` : ''}
               </Text>
