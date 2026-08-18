@@ -103,8 +103,8 @@ export default function BillScreen() {
   ];
 
   const calc = {
-    gross: totals.total,
-    discount: 0,
+    gross: totals.total + totals.discount,
+    discount: totals.discount,
     taxable: totals.total,
     cgst: +(totals.total * 0.09).toFixed(2),
     sgst: +(totals.total * 0.09).toFixed(2),

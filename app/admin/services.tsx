@@ -25,11 +25,14 @@ import {
   categoryParentId,
   pricingTypeLabel,
   newAddonId,
+  isSystemService,
   type PricingType,
   type ServiceAddon,
   type LocationPrice,
   type SurgeRule,
+  type Coupon,
 } from '@/lib/catalogMeta';
+import { loadCoupons, saveCoupons } from '@/lib/offers';
 
 export default function AdminServicesScreen() {
   const params = useLocalSearchParams<{ add?: string }>();
@@ -73,6 +76,15 @@ export default function AdminServicesScreen() {
   const [surgeExtra, setSurgeExtra] = useState('');
   const [surgePercent, setSurgePercent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [cCode, setCCode] = useState('');
+  const [cPercent, setCPercent] = useState('');
+  const [cFlat, setCFlat] = useState('');
+  const [cMin, setCMin] = useState('');
+  const [comboOpen, setComboOpen] = useState(false);
+  const [comboName, setComboName] = useState('');
+  const [comboPrice, setComboPrice] = useState('');
+  const [comboIds, setComboIds] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -82,6 +94,7 @@ export default function AdminServicesScreen() {
       ]);
       if (catRes.data) setCategories(catRes.data);
       if (svcRes.data) setServices(svcRes.data);
+      setCoupons(await loadCoupons());
     } catch {
       // network error
     }
@@ -108,6 +121,61 @@ export default function AdminServicesScreen() {
 
   const parents = categories.filter((c) => !categoryParentId(c));
   const childrenOf = (id: string) => categories.filter((c) => categoryParentId(c) === id);
+  const catalogServices = services.filter((s) => !isSystemService(s));
+
+  const persistCoupons = async (next: Coupon[]) => {
+    setCoupons(next);
+    const catId = categories[0]?.id;
+    if (!catId) {
+      Alert.alert('Category', 'Pehle ek category banao.');
+      return;
+    }
+    const res = await saveCoupons(next, catId);
+    if (res.error) Alert.alert('Coupon save nahi hua', res.error);
+  };
+
+  const saveCombo = async () => {
+    if (!comboName.trim() || comboIds.length < 2) {
+      Alert.alert('Combo', 'Naam aur kam se kam 2 services select karo.');
+      return;
+    }
+    const catId = selectedCategory || categories[0]?.id;
+    if (!catId) return;
+    setSaving(true);
+    const price = Number(comboPrice) || 0;
+    const desc = writeServiceDescription(
+      { is_bundle: true, bundle_service_ids: comboIds, enabled: true, pricing_type: 'fixed' },
+      `Combo: ${catalogServices.filter((s) => comboIds.includes(s.id)).map((s) => s.name).join(' + ')}`
+    );
+    const ins = await supabase
+      .from('services')
+      .insert({
+        category_id: catId,
+        name: comboName.trim(),
+        description: desc,
+        starting_price: price,
+        is_popular: true,
+      })
+      .select()
+      .single();
+    if (ins.data?.id) {
+      await supabase.from('service_packages').insert({
+        service_id: ins.data.id,
+        name: 'Combo',
+        price,
+        duration: 'As per visit',
+        description: 'Bundle package',
+        includes: catalogServices.filter((s) => comboIds.includes(s.id)).map((s) => s.name),
+        is_recommended: true,
+      });
+    }
+    setSaving(false);
+    setComboOpen(false);
+    setComboName('');
+    setComboPrice('');
+    setComboIds([]);
+    loadData();
+  };
 
   const openAddCategory = () => {
     setEditingType('category');
@@ -338,6 +406,55 @@ export default function AdminServicesScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Coupons</Text>
+        </View>
+        {coupons.map((c) => (
+          <View key={c.id} style={styles.itemCard}>
+            <Text style={styles.itemName}>
+              {c.code} · {c.percent ? `${c.percent}%` : `₹${c.flat}`}
+              {c.min_amount ? ` · min ₹${c.min_amount}` : ''}
+            </Text>
+            {role === 'super' && (
+              <TouchableOpacity onPress={() => persistCoupons(coupons.filter((x) => x.id !== c.id))}>
+                <Text style={styles.removeAddon}>Remove</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+        {role === 'super' && (
+          <View style={styles.addonForm}>
+            <TextInput style={[styles.textInput, { flex: 1 }]} value={cCode} onChangeText={setCCode} placeholder="SAVE50" placeholderTextColor={Colors.neutral[400]} autoCapitalize="characters" />
+            <TextInput style={[styles.textInput, { width: 56 }]} value={cPercent} onChangeText={setCPercent} placeholder="%" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+            <TextInput style={[styles.textInput, { width: 64 }]} value={cFlat} onChangeText={setCFlat} placeholder="₹off" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+            <TextInput style={[styles.textInput, { width: 64 }]} value={cMin} onChangeText={setCMin} placeholder="min" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+            <TouchableOpacity
+              style={styles.addAddonBtn}
+              onPress={() => {
+                if (!cCode.trim()) return;
+                persistCoupons([
+                  ...coupons,
+                  {
+                    id: newAddonId(),
+                    code: cCode.trim().toUpperCase(),
+                    percent: Number(cPercent) || 0,
+                    flat: Number(cFlat) || 0,
+                    min_amount: Number(cMin) || 0,
+                    enabled: true,
+                  },
+                ]);
+                setCCode('');
+                setCPercent('');
+                setCFlat('');
+                setCMin('');
+              }}
+            >
+              <Text style={styles.addAddonText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <Text style={styles.inputHint}>% ya flat ₹ — dono mein % pehle. Customer booking pe code lagayega.</Text>
+
+        <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Categories / Sub-categories</Text>
           {role === 'super' && (
             <TouchableOpacity style={styles.addBtn} onPress={openAddCategory}>
@@ -365,17 +482,22 @@ export default function AdminServicesScreen() {
         <View style={[styles.sectionHeader, { marginTop: Spacing.lg }]}>
           <Text style={styles.sectionTitle}>Services</Text>
           {role === 'super' && (
-            <TouchableOpacity style={styles.addBtn} onPress={openAddService}>
-              <Plus size={16} color={Colors.primary[700]} />
-              <Text style={styles.addBtnText}>Add</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={styles.addBtn} onPress={() => setComboOpen(true)}>
+                <Text style={styles.addBtnText}>Combo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addBtn} onPress={openAddService}>
+                <Plus size={16} color={Colors.primary[700]} />
+                <Text style={styles.addBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
-        {services.length === 0 ? (
+        {catalogServices.length === 0 ? (
           <Text style={styles.emptyText}>No services yet.</Text>
         ) : (
-          services.map((svc) => {
+          catalogServices.map((svc) => {
             const cat = categories.find((c) => c.id === svc.category_id);
             const { meta } = parseService(svc);
             const on = meta.enabled !== false;
@@ -386,6 +508,7 @@ export default function AdminServicesScreen() {
                     {svc.name}
                     {!on ? '  · OFF' : ''}
                     {svc.is_popular ? '  · Popular' : ''}
+                    {meta.is_bundle ? '  · Combo' : ''}
                   </Text>
                   <View style={styles.itemMetaRow}>
                     <Tag size={12} color={Colors.neutral[400]} />
@@ -724,6 +847,59 @@ export default function AdminServicesScreen() {
                 ) : (
                   <Text style={styles.saveButtonText}>{editingId ? 'Update' : 'Create'}</Text>
                 )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={role === 'super' && comboOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Bundle / Combo</Text>
+              <TouchableOpacity onPress={() => setComboOpen(false)} style={styles.modalCloseBtn}>
+                <X size={20} color={Colors.neutral[500]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.inputLabel}>Combo name</Text>
+              <TextInput style={styles.textInput} value={comboName} onChangeText={setComboName} placeholder="AC + Fridge combo" placeholderTextColor={Colors.neutral[400]} />
+              <Text style={styles.inputLabel}>Combo price</Text>
+              <TextInput style={styles.textInput} value={comboPrice} onChangeText={setComboPrice} placeholder="799" placeholderTextColor={Colors.neutral[400]} keyboardType="numeric" />
+              <Text style={styles.inputLabel}>Category</Text>
+              <View style={styles.categoryPicker}>
+                {categories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.categoryPill, selectedCategory === cat.id && styles.categoryPillActive]}
+                    onPress={() => setSelectedCategory(cat.id)}
+                  >
+                    <Text style={[styles.categoryPillText, selectedCategory === cat.id && styles.categoryPillTextActive]}>{cat.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.inputLabel}>Services in combo (2+)</Text>
+              <View style={styles.categoryPicker}>
+                {catalogServices
+                  .filter((s) => !parseService(s).meta.is_bundle)
+                  .map((s) => {
+                    const on = comboIds.includes(s.id);
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.categoryPill, on && styles.categoryPillActive]}
+                        onPress={() =>
+                          setComboIds((ids) => (ids.includes(s.id) ? ids.filter((x) => x !== s.id) : [...ids, s.id]))
+                        }
+                      >
+                        <Text style={[styles.categoryPillText, on && styles.categoryPillTextActive]}>{s.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+              <TouchableOpacity style={styles.saveButton} onPress={saveCombo} disabled={saving}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Create combo</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>

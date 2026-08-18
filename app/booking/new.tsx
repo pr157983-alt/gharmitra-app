@@ -15,8 +15,10 @@ import { ArrowLeft, Check, Calendar, Clock, User, Phone, MapPin, FileText, Alert
 import { supabase, Service, ServicePackage, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { isBlacklisted } from '@/lib/customerSegment';
-import { parseService, addonSum, computeLocationAndSurge } from '@/lib/catalogMeta';
+import { parseService, addonSum, computeLocationAndSurge, applyCoupon } from '@/lib/catalogMeta';
 import { writeJobMeta } from '@/lib/jobMeta';
+import { findCoupon, loadCoupons } from '@/lib/offers';
+import type { Coupon } from '@/lib/catalogMeta';
 
 type FormError = { title: string; message: string } | null;
 
@@ -61,6 +63,9 @@ export default function NewBookingScreen() {
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [pincode, setPincode] = useState('');
+  const [promo, setPromo] = useState('');
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [couponMsg, setCouponMsg] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -80,7 +85,10 @@ export default function NewBookingScreen() {
   const svcMeta = parseService(serviceData || { description: null }).meta;
   const baseAmount = (packageData?.price || 0) + extrasTotal;
   const pricing = computeLocationAndSurge(svcMeta, city, pincode, selectedTime, baseAmount);
-  const bookingTotal = baseAmount + pricing.location_extra + pricing.surge_extra;
+  const grossTotal = baseAmount + pricing.location_extra + pricing.surge_extra;
+  const applied = findCoupon(coupons, promo);
+  const couponDiscount = applied ? applyCoupon(applied, grossTotal) : 0;
+  const bookingTotal = Math.max(0, grossTotal - couponDiscount);
   const visitingFee = svcMeta.visiting_fee || 0;
   const days = getNextDays(14);
 
@@ -96,6 +104,7 @@ export default function NewBookingScreen() {
       ]);
       if (svcRes.data) setServiceData(svcRes.data);
       if (pkgRes.data) setPackageData(pkgRes.data);
+      setCoupons(await loadCoupons());
     } catch {
       // network error
     }
@@ -208,6 +217,8 @@ export default function NewBookingScreen() {
           location_label: pricing.location_label,
           surge_extra: pricing.surge_extra,
           surge_label: pricing.surge_label,
+          coupon_code: couponDiscount ? applied?.code : '',
+          coupon_discount: couponDiscount,
         },
         notes.trim()
       ),
@@ -394,6 +405,12 @@ export default function NewBookingScreen() {
                 </Text>
               </View>
             )}
+            {couponDiscount > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Coupon {applied?.code}</Text>
+                <Text style={styles.summaryValue}>-₹{couponDiscount}</Text>
+              </View>
+            )}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
               <Text style={styles.summaryTotal}>₹{bookingTotal}</Text>
@@ -525,6 +542,31 @@ export default function NewBookingScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <Text style={styles.sectionTitle}>Promo code</Text>
+        <View style={styles.inputCard}>
+          <View style={styles.inputRow}>
+            <FileText size={18} color={Colors.neutral[400]} />
+            <TextInput
+              style={styles.input}
+              placeholder="SAVE50"
+              placeholderTextColor={Colors.neutral[400]}
+              value={promo}
+              onChangeText={(v) => {
+                setPromo(v.toUpperCase());
+                setCouponMsg('');
+              }}
+              autoCapitalize="characters"
+            />
+          </View>
+        </View>
+        {promo.trim() ? (
+          <Text style={styles.checkingText}>
+            {couponDiscount > 0
+              ? `Coupon applied: -₹${couponDiscount}`
+              : couponMsg || 'Code invalid ya minimum amount poora nahi.'}
+          </Text>
+        ) : null}
 
         {/* Notes */}
         <Text style={styles.sectionTitle}>Additional Notes (Optional)</Text>

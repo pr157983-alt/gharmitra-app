@@ -29,6 +29,15 @@ export type CategoryMeta = {
   enabled?: boolean;
 };
 
+export type Coupon = {
+  id: string;
+  code: string;
+  percent: number;
+  flat: number;
+  min_amount: number;
+  enabled?: boolean;
+};
+
 export type ServiceMeta = {
   pricing_type?: PricingType;
   estimated_time?: string;
@@ -38,6 +47,10 @@ export type ServiceMeta = {
   visiting_fee?: number;
   location_prices?: LocationPrice[];
   surge_rules?: SurgeRule[];
+  is_system?: boolean;
+  is_bundle?: boolean;
+  bundle_service_ids?: string[];
+  coupons?: Coupon[];
 };
 
 const START = '__GM__';
@@ -86,6 +99,10 @@ export function writeServiceDescription(meta: ServiceMeta, description: string) 
       visiting_fee: Number(meta.visiting_fee || 0),
       location_prices: meta.location_prices || [],
       surge_rules: meta.surge_rules || [],
+      is_system: Boolean(meta.is_system),
+      is_bundle: Boolean(meta.is_bundle),
+      bundle_service_ids: meta.bundle_service_ids || [],
+      coupons: meta.coupons || [],
     },
     description.trim()
   );
@@ -96,7 +113,31 @@ export function isCategoryEnabled(cat: Pick<ServiceCategory, 'icon_name'>) {
   return meta.enabled !== false;
 }
 
-export function isServiceEnabled(svc: Pick<Service, 'description'>) {
+export function isSystemService(svc: Pick<Service, 'name' | 'description'>) {
+  return Boolean(svc.name?.startsWith('__gm')) || Boolean(parseService(svc).meta.is_system);
+}
+
+export function isServiceEnabled(svc: Pick<Service, 'description' | 'name'>) {
+  if (isSystemService(svc)) return false;
+  const { meta } = parseService(svc);
+  return meta.enabled !== false;
+}
+
+export function applyCoupon(coupon: Coupon, amount: number) {
+  if (coupon.enabled === false) return 0;
+  if (amount < Number(coupon.min_amount || 0)) return 0;
+  if (Number(coupon.percent) > 0) {
+    return Math.min(amount, Math.round((amount * Number(coupon.percent)) / 100));
+  }
+  return Math.min(amount, Number(coupon.flat || 0));
+}
+
+export function isSystemService(svc: Pick<Service, 'name' | 'description'>) {
+  return svc.name?.startsWith('__gm') || Boolean(parseService(svc).meta.is_system);
+}
+
+export function isServiceEnabled(svc: Pick<Service, 'description' | 'name'>) {
+  if (isSystemService(svc)) return false;
   const { meta } = parseService(svc);
   return meta.enabled !== false;
 }

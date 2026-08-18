@@ -219,6 +219,11 @@ export default function BookingDetailScreen() {
                         {jm.surge_label ? ` (${jm.surge_label})` : ''}
                       </Text>
                     ) : null}
+                    {tot.discount > 0 ? (
+                      <Text style={styles.detailValue}>
+                        Coupon {jm.coupon_code || ''}: -₹{tot.discount}
+                      </Text>
+                    ) : null}
                     <Text style={styles.detailValue}>
                       Replaced Part: ₹{tot.parts}
                       {jm.parts_name ? ` (${jm.parts_name})` : ''}

@@ -143,6 +143,11 @@ export default function ServiceDetailScreen() {
             </View>
           )}
           <Text style={[styles.reviewsText, { marginTop: 8 }]}>{pricingLabel(selectedService)}</Text>
+          {parseService(selectedService).meta.is_bundle && (
+            <Text style={[styles.serviceDesc, { marginTop: 8, fontWeight: '700' }]}>
+              Combo includes: {parseService(selectedService).description || (parseService(selectedService).meta.bundle_service_ids || []).length + ' services'}
+            </Text>
+          )}
         </View>
 
         {/* Multiple services in same category */}

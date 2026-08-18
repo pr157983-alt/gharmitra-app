@@ -395,6 +395,11 @@ export default function AdminJobDetailsScreen() {
                   Peak / surge: {formatINR(bill.surge)} {meta.surge_label ? `(${meta.surge_label})` : ''}
                 </Text>
               )}
+              {bill.discount > 0 && (
+                <Text style={styles.p}>
+                  Coupon {meta.coupon_code || ''}: -{formatINR(bill.discount)}
+                </Text>
+              )}
               <Text style={styles.p}>
                 Replaced Part: {formatINR(bill.parts)} {meta.parts_name ? `(${meta.parts_name})` : ''}
               </Text>
