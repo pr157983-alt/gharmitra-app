@@ -11,6 +11,40 @@ function inRange(date: string, from: string, to: string) {
   return date >= from && date <= to;
 }
 
+function techName(techById: Record<string, Technician>, id?: string | null) {
+  if (!id) return '';
+  return techById[id]?.name || '';
+}
+
+function extraStaffNames(b: Booking, techById: Record<string, Technician>) {
+  const ids = parseJobMeta(b.notes).meta.extra_technician_ids || [];
+  return ids.map((id) => techName(techById, id)).filter(Boolean).join('; ');
+}
+
+function bookingHistoryRow(b: Booking, techById: Record<string, Technician>) {
+  const { meta, userNotes } = parseJobMeta(b.notes);
+  return {
+    id: b.id,
+    created_at: (b.created_at || '').slice(0, 19).replace('T', ' '),
+    date: b.scheduled_date,
+    time: b.scheduled_time || '',
+    customer: b.customer_name,
+    phone: b.phone,
+    address: b.address || '',
+    service: b.service_name,
+    package: b.package_name || '',
+    amount: b.total_amount,
+    status: b.status,
+    payment: paymentLabel(meta.payment_status),
+    technician: techName(techById, b.technician_id),
+    extra_staff: extraStaffNames(b, techById),
+    cancel_reason: meta.cancel_reason || '',
+    warranty: meta.warranty_until || '',
+    free_visit: meta.is_free_visit ? 'yes' : 'no',
+    notes: userNotes || '',
+  };
+}
+
 function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
   return (
@@ -181,6 +215,14 @@ export default function ReportsScreen() {
     });
   }, [technicians, ranged]);
 
+  const techById = useMemo(() => {
+    const map: Record<string, Technician> = {};
+    technicians.forEach((t) => {
+      map[t.id] = t;
+    });
+    return map;
+  }, [technicians]);
+
   const clv = useMemo(() => {
     const phones = [...new Set(ranged.map((b) => b.phone).filter(Boolean))];
     const bl = loadBlacklist();
@@ -188,16 +230,53 @@ export default function ReportsScreen() {
       .map((phone) => {
         const list = bookings.filter((b) => b.phone === phone);
         const spend = spendOf(list);
+        const dates = list.map((b) => b.scheduled_date).sort();
         return {
           customer: list[0]?.customer_name || phone,
           phone,
           orders: list.length,
           spend,
+          first_booking: dates[0] || '',
+          last_booking: dates[dates.length - 1] || '',
           segment: SEGMENT_LABEL[segmentFor(list.length, spend, bl.includes(phone))],
         };
       })
       .sort((a, b) => b.spend - a.spend);
   }, [ranged, bookings]);
+
+  const bookingHistory = useMemo(
+    () => ranged.map((b) => bookingHistoryRow(b, techById)),
+    [ranged, techById]
+  );
+
+  const customerBookingHistory = useMemo(() => {
+    const phones = new Set(ranged.map((b) => b.phone).filter(Boolean));
+    return bookings
+      .filter((b) => phones.has(b.phone))
+      .slice()
+      .sort((a, b) => `${b.scheduled_date}${b.scheduled_time}`.localeCompare(`${a.scheduled_date}${a.scheduled_time}`))
+      .map((b) => bookingHistoryRow(b, techById));
+  }, [bookings, ranged, techById]);
+
+  const staffJobHistory = useMemo(() => {
+    const rows: Record<string, unknown>[] = [];
+    ranged.forEach((b) => {
+      const { meta } = parseJobMeta(b.notes);
+      const extraIds = meta.extra_technician_ids || [];
+      const ids = [b.technician_id, ...extraIds].filter(Boolean) as string[];
+      const unique = [...new Set(ids)];
+      unique.forEach((id) => {
+        const row = bookingHistoryRow(b, techById);
+        rows.push({
+          staff: techName(techById, id) || id,
+          staff_phone: techById[id]?.phone || '',
+          role: id === b.technician_id ? 'primary' : 'extra',
+          ...row,
+        });
+      });
+    });
+    return rows;
+  }, [ranged, techById]);
 
   const maxRev = Math.max(...revenueByBucket.map(([, v]) => v), 1);
   const maxDay = Math.max(...byDay, 1);
@@ -228,6 +307,61 @@ export default function ReportsScreen() {
         <TextInput style={styles.input} value={from} onChangeText={setFrom} />
         <TextInput style={styles.input} value={to} onChangeText={setTo} />
       </View>
+
+      <Text style={styles.section}>Full history</Text>
+      <ReportCard
+        title={`Booking history (${bookingHistory.length})`}
+        onDownload={() => downloadCSV('booking-history.csv', bookingHistory as unknown as Record<string, unknown>[])}
+      >
+        {bookingHistory.slice(0, 20).map((r) => (
+          <Text key={r.id} style={styles.line}>
+            {r.date} {r.time} · {r.customer} · {r.service} · {r.status} · {formatINR(Number(r.amount || 0))} · {r.technician || 'Unassigned'}
+          </Text>
+        ))}
+        {bookingHistory.length > 20 && <Text style={styles.hint}>Screen pe pehle 20. Excel mein saari {bookingHistory.length} rows.</Text>}
+        {bookingHistory.length === 0 && <Text style={styles.empty}>Is range mein booking nahi.</Text>}
+      </ReportCard>
+      <ReportCard
+        title={`Customer list (${clv.length})`}
+        onDownload={() => downloadCSV('customers.csv', clv as unknown as Record<string, unknown>[])}
+      >
+        {clv.slice(0, 20).map((c) => (
+          <Text key={c.phone} style={styles.line}>
+            {c.customer} · {c.phone} · {c.orders} orders · {formatINR(c.spend)} · last {c.last_booking} · {c.segment}
+          </Text>
+        ))}
+        {clv.length > 20 && <Text style={styles.hint}>Screen pe pehle 20. Excel mein poori list.</Text>}
+        {clv.length === 0 && <Text style={styles.empty}>No customers in range.</Text>}
+      </ReportCard>
+      <ReportCard
+        title={`Customer booking history (${customerBookingHistory.length})`}
+        onDownload={() =>
+          downloadCSV('customer-booking-history.csv', customerBookingHistory as unknown as Record<string, unknown>[])
+        }
+      >
+        <Text style={styles.hint}>Range ke customers ki lifetime bookings (pehle se last tak).</Text>
+        {customerBookingHistory.slice(0, 20).map((r) => (
+          <Text key={`${r.phone}-${r.id}`} style={styles.line}>
+            {r.customer} · {r.date} · {r.service} · {r.status} · {formatINR(Number(r.amount || 0))}
+          </Text>
+        ))}
+        {customerBookingHistory.length > 20 && (
+          <Text style={styles.hint}>Screen pe pehle 20. Excel mein saari rows.</Text>
+        )}
+        {customerBookingHistory.length === 0 && <Text style={styles.empty}>No customer history.</Text>}
+      </ReportCard>
+      <ReportCard
+        title={`Staff job history (${staffJobHistory.length})`}
+        onDownload={() => downloadCSV('staff-job-history.csv', staffJobHistory)}
+      >
+        {staffJobHistory.slice(0, 20).map((r, i) => (
+          <Text key={`${String(r.id)}-${String(r.staff)}-${i}`} style={styles.line}>
+            {String(r.staff)} ({String(r.role)}) · {String(r.date)} · {String(r.customer)} · {String(r.service)} · {String(r.status)}
+          </Text>
+        ))}
+        {staffJobHistory.length > 20 && <Text style={styles.hint}>Screen pe pehle 20. Excel mein saari jobs.</Text>}
+        {staffJobHistory.length === 0 && <Text style={styles.empty}>Is range mein assigned jobs nahi.</Text>}
+      </ReportCard>
 
       <Text style={styles.section}>Business / Revenue</Text>
       <View style={styles.kpis}>
@@ -329,7 +463,7 @@ export default function ReportsScreen() {
         onDownload={() => downloadCSV('customer-ltv.csv', clv as unknown as Record<string, unknown>[])}
       >
         {clv.slice(0, 12).map((c) => (
-          <Text key={c.phone} style={styles.line}>
+          <Text key={`ltv-${c.phone}`} style={styles.line}>
             {c.customer} · {c.orders} orders · {formatINR(c.spend)} · {c.segment}
           </Text>
         ))}
@@ -384,6 +518,7 @@ const styles = StyleSheet.create({
   dl: { backgroundColor: AdminColors.greenSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   dlText: { color: AdminColors.green, fontWeight: '800', fontSize: 11 },
   line: { fontSize: 12, color: AdminColors.text, marginBottom: 4 },
+  hint: { fontSize: 11, color: AdminColors.muted, marginBottom: 8 },
   empty: { color: AdminColors.muted, fontSize: 12 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   barLabel: { width: 90, fontSize: 11, color: AdminColors.muted },
