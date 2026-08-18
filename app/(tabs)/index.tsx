@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { Star, ChevronRight, Search, ShieldCheck, Clock, BadgePercent, Shield } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
 
 const { width } = Dimensions.get('window');
 
@@ -52,8 +53,8 @@ export default function HomeScreen() {
         supabase.from('service_categories').select('*').order('sort_order'),
         supabase.from('services').select('*').eq('is_popular', true).order('rating', { ascending: false }),
       ]);
-      if (catRes.data) setCategories(catRes.data);
-      if (svcRes.data) setPopularServices(svcRes.data);
+      if (catRes.data) setCategories(topLevelCategories(catRes.data));
+      if (svcRes.data) setPopularServices(enabledServices(svcRes.data));
     } catch {
       // network error — show empty state
     }
@@ -211,7 +212,7 @@ export default function HomeScreen() {
                     <Text style={styles.ratingText}>{svc.rating}</Text>
                     <Text style={styles.reviewsText}> ({svc.reviews_count})</Text>
                   </View>
-                  <Text style={styles.popularPrice}>₹{svc.starting_price} onwards</Text>
+                  <Text style={styles.popularPrice}>{pricingLabel(svc)}</Text>
                 </View>
               </TouchableOpacity>
             ))}

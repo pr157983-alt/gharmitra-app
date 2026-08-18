@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { Search, Star } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { enabledServices, isCategoryEnabled, parseService, pricingLabel, categoryParentId } from '@/lib/catalogMeta';
 
 export default function ServicesScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -30,8 +31,8 @@ export default function ServicesScreen() {
         supabase.from('service_categories').select('*').order('sort_order'),
         supabase.from('services').select('*').order('is_popular', { ascending: false }),
       ]);
-      if (catRes.data) setCategories(catRes.data);
-      if (svcRes.data) setServices(svcRes.data);
+      if (catRes.data) setCategories(catRes.data.filter(isCategoryEnabled));
+      if (svcRes.data) setServices(enabledServices(svcRes.data));
     } catch {
       // network error
     }
@@ -52,7 +53,9 @@ export default function ServicesScreen() {
 
   const filtered = services.filter((s) => {
     const matchSearch = search.trim() === '' || s.name.toLowerCase().includes(search.toLowerCase());
-    const matchCat = !activeCategory || s.category_id === activeCategory;
+    const childIds = categories.filter((c) => categoryParentId(c) === activeCategory).map((c) => c.id);
+    const matchCat =
+      !activeCategory || s.category_id === activeCategory || childIds.includes(s.category_id);
     return matchSearch && matchCat;
   });
 
@@ -133,7 +136,7 @@ export default function ServicesScreen() {
                 <View style={styles.serviceInfo}>
                   {cat && <Text style={styles.serviceCategory}>{cat.name}</Text>}
                   <Text style={styles.serviceName}>{svc.name}</Text>
-                  <Text style={styles.serviceDesc} numberOfLines={2}>{svc.description}</Text>
+                  <Text style={styles.serviceDesc} numberOfLines={2}>{parseService(svc).description}</Text>
                   <View style={styles.serviceMeta}>
                     <View style={styles.ratingPill}>
                       <Star size={11} color={Colors.neutral[0]} fill={Colors.neutral[0]} />
@@ -141,7 +144,7 @@ export default function ServicesScreen() {
                     </View>
                     <Text style={styles.reviewsText}>{svc.reviews_count} reviews</Text>
                   </View>
-                  <Text style={styles.servicePrice}>₹{svc.starting_price} onwards</Text>
+                  <Text style={styles.servicePrice}>{pricingLabel(svc)}</Text>
                 </View>
               </TouchableOpacity>
             );

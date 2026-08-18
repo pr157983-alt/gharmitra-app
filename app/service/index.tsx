@@ -13,11 +13,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Star, ChevronRight } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { childCategories, enabledServices, parseService, pricingLabel } from '@/lib/catalogMeta';
 
 export default function CategoryServicesScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
   const [cat, setCat] = useState<ServiceCategory | null>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [subCategories, setSubCategories] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -26,12 +28,14 @@ export default function CategoryServicesScreen() {
       return;
     }
     try {
-      const [catRes, svcRes] = await Promise.all([
+      const [catRes, svcRes, allCats] = await Promise.all([
         supabase.from('service_categories').select('*').eq('id', category).maybeSingle(),
         supabase.from('services').select('*').eq('category_id', category).order('is_popular', { ascending: false }),
+        supabase.from('service_categories').select('*').order('sort_order'),
       ]);
       if (catRes.data) setCat(catRes.data);
-      if (svcRes.data) setServices(svcRes.data);
+      if (svcRes.data) setServices(enabledServices(svcRes.data));
+      if (allCats.data) setSubCategories(childCategories(allCats.data, category));
     } catch {
       // network error
     }
@@ -63,7 +67,23 @@ export default function CategoryServicesScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {services.length === 0 ? (
+        {subCategories.length > 0 && (
+          <View style={{ marginBottom: Spacing.md }}>
+            <Text style={styles.subHead}>Sub-categories</Text>
+            {subCategories.map((sub) => (
+              <TouchableOpacity
+                key={sub.id}
+                style={styles.subCard}
+                onPress={() => router.push(`/service?category=${sub.id}`)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.serviceName}>{sub.name}</Text>
+                <ChevronRight size={18} color={Colors.neutral[300]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        {services.length === 0 && subCategories.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>No services in this category</Text>
           </View>
@@ -78,7 +98,7 @@ export default function CategoryServicesScreen() {
               <Image source={{ uri: svc.image_url || '' }} style={styles.serviceImage} />
               <View style={styles.serviceInfo}>
                 <Text style={styles.serviceName}>{svc.name}</Text>
-                <Text style={styles.serviceDesc} numberOfLines={2}>{svc.description}</Text>
+                <Text style={styles.serviceDesc} numberOfLines={2}>{parseService(svc).description}</Text>
                 <View style={styles.metaRow}>
                   <View style={styles.ratingPill}>
                     <Star size={11} color={Colors.neutral[0]} fill={Colors.neutral[0]} />
@@ -86,7 +106,7 @@ export default function CategoryServicesScreen() {
                   </View>
                   <Text style={styles.reviewsText}>{svc.reviews_count} reviews</Text>
                 </View>
-                <Text style={styles.servicePrice}>₹{svc.starting_price} onwards</Text>
+                <Text style={styles.servicePrice}>{pricingLabel(svc)}</Text>
               </View>
               <ChevronRight size={18} color={Colors.neutral[300]} style={styles.chevron} />
             </TouchableOpacity>
@@ -130,6 +150,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: Colors.neutral[900],
+  },
+  subHead: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.neutral[500],
+    marginBottom: Spacing.sm,
+  },
+  subCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    marginBottom: Spacing.sm,
   },
   listContainer: {
     paddingHorizontal: Spacing.lg,

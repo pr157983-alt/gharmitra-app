@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Star, Check, Clock, ChevronRight, Calendar } from 'lucide-react-native';
 import { supabase, Service, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { isServiceEnabled, parseService, pricingLabel, serviceBanners } from '@/lib/catalogMeta';
 
 export default function ServiceDetailScreen() {
   const { id, category } = useLocalSearchParams<{ id: string; category?: string }>();
@@ -34,16 +35,19 @@ export default function ServiceDetailScreen() {
           ? await supabase.from('service_packages').select('*').in('service_id', svcIds)
           : { data: [], error: null };
         if (svcRes.data && svcRes.data.length > 0) {
-          setServices(svcRes.data);
-          setSelectedService(svcRes.data[0]);
-          if (pkgRes.data) setPackages(pkgRes.data.filter((p) => p.service_id === svcRes.data[0].id));
+          const visible = svcRes.data.filter(isServiceEnabled);
+          setServices(visible);
+          if (visible[0]) {
+            setSelectedService(visible[0]);
+            if (pkgRes.data) setPackages(pkgRes.data.filter((p) => p.service_id === visible[0].id));
+          }
         }
       } else if (id) {
         const [svcRes, pkgRes] = await Promise.all([
           supabase.from('services').select('*').eq('id', id).maybeSingle(),
           supabase.from('service_packages').select('*').eq('service_id', id),
         ]);
-        if (svcRes.data) setSelectedService(svcRes.data);
+        if (svcRes.data && isServiceEnabled(svcRes.data)) setSelectedService(svcRes.data);
         if (pkgRes.data) setPackages(pkgRes.data);
       }
     } catch {
@@ -110,6 +114,14 @@ export default function ServiceDetailScreen() {
           </TouchableOpacity>
         </View>
 
+        {serviceBanners(selectedService).length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bannerRow}>
+            {serviceBanners(selectedService).slice(1).map((uri) => (
+              <Image key={uri} source={{ uri }} style={styles.extraBanner} />
+            ))}
+          </ScrollView>
+        )}
+
         {/* Service info */}
         <View style={styles.serviceInfo}>
           <Text style={styles.serviceName}>{selectedService.name}</Text>
@@ -120,7 +132,14 @@ export default function ServiceDetailScreen() {
             </View>
             <Text style={styles.reviewsText}>{selectedService.reviews_count} reviews</Text>
           </View>
-          <Text style={styles.serviceDesc}>{selectedService.description}</Text>
+          <Text style={styles.serviceDesc}>{parseService(selectedService).description}</Text>
+          {!!parseService(selectedService).meta.estimated_time && (
+            <View style={styles.ratingRow}>
+              <Clock size={14} color={Colors.neutral[500]} />
+              <Text style={styles.reviewsText}>Est. {parseService(selectedService).meta.estimated_time}</Text>
+            </View>
+          )}
+          <Text style={[styles.reviewsText, { marginTop: 8 }]}>{pricingLabel(selectedService)}</Text>
         </View>
 
         {/* Multiple services in same category */}
@@ -231,8 +250,10 @@ export default function ServiceDetailScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.bottomLabel}>Starting from</Text>
-              <Text style={styles.bottomPrice}>₹{selectedService.starting_price}</Text>
+              <Text style={styles.bottomLabel}>
+                {parseService(selectedService).meta.pricing_type === 'quote' ? 'Quote' : 'Starting from'}
+              </Text>
+              <Text style={styles.bottomPrice}>{pricingLabel(selectedService)}</Text>
             </>
           )}
         </View>
@@ -288,6 +309,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  bannerRow: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm },
+  extraBanner: { width: 140, height: 80, borderRadius: Radius.md, backgroundColor: Colors.neutral[200] },
   serviceInfo: {
     backgroundColor: Colors.neutral[0],
     padding: Spacing.lg,
