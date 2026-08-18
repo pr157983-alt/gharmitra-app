@@ -132,16 +132,6 @@ export function applyCoupon(coupon: Coupon, amount: number) {
   return Math.min(amount, Number(coupon.flat || 0));
 }
 
-export function isSystemService(svc: Pick<Service, 'name' | 'description'>) {
-  return svc.name?.startsWith('__gm') || Boolean(parseService(svc).meta.is_system);
-}
-
-export function isServiceEnabled(svc: Pick<Service, 'description' | 'name'>) {
-  if (isSystemService(svc)) return false;
-  const { meta } = parseService(svc);
-  return meta.enabled !== false;
-}
-
 export function categoryParentId(cat: Pick<ServiceCategory, 'icon_name'>) {
   return parseCategory(cat).meta.parent_id || null;
 }
