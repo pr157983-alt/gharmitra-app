@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Calendar, Clock, User, Phone, MapPin, FileText, AlertCircle, CheckCircle2, Home, LogIn } from 'lucide-react-native';
 import { supabase, Service, ServicePackage, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { isBlacklisted } from '@/lib/customerSegment';
 
 type FormError = { title: string; message: string } | null;
 
@@ -140,6 +141,13 @@ export default function NewBookingScreen() {
     }
     if (phone.trim().length < 10) {
       setFormError({ title: 'Invalid Phone', message: 'Please enter a valid 10-digit phone number.' });
+      return;
+    }
+    if (isBlacklisted(phone.trim())) {
+      setFormError({
+        title: 'Booking blocked',
+        message: 'Yeh number blacklist pe hai. Support se contact karein.',
+      });
       return;
     }
     if (!serviceData || !packageData) return;
