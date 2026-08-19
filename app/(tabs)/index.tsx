@@ -20,8 +20,8 @@ import { topLevelCategories, enabledServices, parseService } from '@/lib/catalog
 import { CatalogImage } from '@/components/CatalogImage';
 import { DealCountdown } from '@/components/DealCountdown';
 import { PriceTag } from '@/components/PriceTag';
-import { loadCoupons } from '@/lib/offers';
-import type { Coupon } from '@/lib/catalogMeta';
+import { loadCoupons, loadPromoOffers, livePromoOffers, offerDiscountLabel, promoToCoupon } from '@/lib/offers';
+import type { Coupon, PromoOffer } from '@/lib/catalogMeta';
 import { readCustomerSession, setCustomerCity } from '@/lib/customerSession';
 import { comboPricing, couponOnPrice, isCombo } from '@/lib/deals';
 
@@ -45,6 +45,7 @@ export default function HomeScreen() {
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [promoOffers, setPromoOffers] = useState<PromoOffer[]>([]);
   const [recentBooking, setRecentBooking] = useState<Booking | null>(null);
   const [city, setCity] = useState('');
   const [editingCity, setEditingCity] = useState(false);
@@ -80,6 +81,7 @@ export default function HomeScreen() {
       if (popRes.data) setPopularServices(enabledServices(popRes.data));
       if (pkgRes.data) setPackages(pkgRes.data);
       setCoupons((await loadCoupons()).filter((c) => c.enabled !== false));
+      setPromoOffers(await loadPromoOffers());
       if (session.id || session.phone) {
         let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(1);
         if (session.id && session.phone) q = q.or(`customer_id.eq.${session.id},phone.eq.${session.phone}`);
@@ -123,7 +125,8 @@ export default function HomeScreen() {
     return allServices.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6);
   }, [search, allServices]);
 
-  const featuredCoupon = coupons[0] || null;
+  const liveOffers = useMemo(() => livePromoOffers(promoOffers), [promoOffers]);
+  const featuredCoupon = liveOffers[0] ? promoToCoupon(liveOffers[0]) : coupons[0] || null;
   const combos = useMemo(() => allServices.filter(isCombo), [allServices]);
   const dealCards = useMemo(() => {
     const fromCombos = combos
@@ -295,6 +298,33 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {liveOffers.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Discount offers</Text>
+                <Text style={styles.sectionHint}>Admin se on/off · timeline ke andar</Text>
+              </View>
+            </View>
+            {liveOffers.map((o) => (
+              <TouchableOpacity
+                key={o.id}
+                style={styles.promoCard}
+                onPress={() => router.push('/(tabs)/services')}
+                activeOpacity={0.85}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.promoEyebrow}>{offerDiscountLabel(o)}</Text>
+                  <Text style={styles.promoTitle}>{o.title}</Text>
+                  {o.subtitle ? <Text style={styles.promoSub}>{o.subtitle}</Text> : null}
+                  {o.code ? <Text style={styles.promoCode}>Code: {o.code}</Text> : null}
+                </View>
+                <DealCountdown compact endsAt={o.ends_at ? new Date(o.ends_at).getTime() : null} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
         {dealCards.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -302,7 +332,7 @@ export default function HomeScreen() {
                 <Text style={styles.sectionTitle}>Limited time deals</Text>
                 <Text style={styles.sectionHint}>Aaj raat 11:59 tak</Text>
               </View>
-              <DealCountdown compact />
+              <DealCountdown compact endsAt={liveOffers[0]?.ends_at ? new Date(liveOffers[0].ends_at).getTime() : null} />
             </View>
             <ScrollView
               horizontal
@@ -782,6 +812,19 @@ const styles = StyleSheet.create({
     color: Colors.neutral[500],
     marginTop: 2,
   },
+  promoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.neutral[900],
+    borderRadius: Radius.lg,
+    padding: 16,
+    marginBottom: 10,
+  },
+  promoEyebrow: { fontSize: 11, fontWeight: '800', color: Colors.accent[400], letterSpacing: 0.4 },
+  promoTitle: { fontSize: 18, fontWeight: '800', color: Colors.neutral[0], marginTop: 4 },
+  promoSub: { fontSize: 13, color: Colors.neutral[300], marginTop: 4 },
+  promoCode: { fontSize: 12, fontWeight: '700', color: Colors.neutral[0], marginTop: 8 },
   seeAll: {
     fontSize: 13,
     fontWeight: '600',

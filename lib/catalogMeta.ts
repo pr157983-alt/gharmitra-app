@@ -38,6 +38,19 @@ export type Coupon = {
   enabled?: boolean;
 };
 
+export type PromoOffer = {
+  id: string;
+  title: string;
+  subtitle: string;
+  code: string;
+  percent: number;
+  flat: number;
+  min_amount: number;
+  starts_at: string;
+  ends_at: string;
+  enabled: boolean;
+};
+
 export type ServiceMeta = {
   pricing_type?: PricingType;
   estimated_time?: string;
@@ -51,6 +64,7 @@ export type ServiceMeta = {
   is_bundle?: boolean;
   bundle_service_ids?: string[];
   coupons?: Coupon[];
+  promo_offers?: PromoOffer[];
 };
 
 const START = '__GM__';
@@ -103,6 +117,7 @@ export function writeServiceDescription(meta: ServiceMeta, description: string) 
       is_bundle: Boolean(meta.is_bundle),
       bundle_service_ids: meta.bundle_service_ids || [],
       coupons: meta.coupons || [],
+      promo_offers: meta.promo_offers || [],
     },
     description.trim()
   );

@@ -17,8 +17,8 @@ import { Colors, Spacing, Radius } from '@/lib/theme';
 import { isBlacklisted } from '@/lib/customerSegment';
 import { parseService, addonSum, computeLocationAndSurge, applyCoupon } from '@/lib/catalogMeta';
 import { writeJobMeta } from '@/lib/jobMeta';
-import { findCoupon, loadCoupons } from '@/lib/offers';
-import type { Coupon } from '@/lib/catalogMeta';
+import { findCoupon, loadCoupons, loadPromoOffers, livePromoOffers, offerDiscountLabel } from '@/lib/offers';
+import type { Coupon, PromoOffer } from '@/lib/catalogMeta';
 import {
   readCustomerSession,
   readSavedAddresses,
@@ -71,6 +71,7 @@ export default function NewBookingScreen() {
   const [pincode, setPincode] = useState('');
   const [promo, setPromo] = useState('');
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [promoOffers, setPromoOffers] = useState<PromoOffer[]>([]);
   const [couponMsg, setCouponMsg] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
@@ -96,7 +97,7 @@ export default function NewBookingScreen() {
   const baseAmount = (packageData?.price || 0) + extrasTotal;
   const pricing = computeLocationAndSurge(svcMeta, city, pincode, selectedTime, baseAmount);
   const grossTotal = baseAmount + pricing.location_extra + pricing.surge_extra;
-  const applied = findCoupon(coupons, promo);
+  const applied = findCoupon(coupons, promo, promoOffers);
   const couponDiscount = applied ? applyCoupon(applied, grossTotal) : 0;
   const bookingTotal = Math.max(0, grossTotal - couponDiscount);
   const visitingFee = svcMeta.visiting_fee || 0;
@@ -115,6 +116,7 @@ export default function NewBookingScreen() {
       if (svcRes.data) setServiceData(svcRes.data);
       if (pkgRes.data) setPackageData(pkgRes.data);
       setCoupons(await loadCoupons());
+      setPromoOffers(await loadPromoOffers());
     } catch {
       // network error
     }
@@ -658,6 +660,18 @@ export default function NewBookingScreen() {
               <Text style={styles.confirmBody}>Cash on Service</Text>
             </View>
             <Text style={styles.sectionTitle}>Promo code</Text>
+            {livePromoOffers(promoOffers).map((o) => (
+              <TouchableOpacity
+                key={o.id}
+                style={styles.liveOfferChip}
+                onPress={() => o.code && setPromo(o.code.toUpperCase())}
+              >
+                <Text style={styles.liveOfferText}>
+                  {o.title} · {offerDiscountLabel(o)}
+                  {o.code ? ` · tap to apply ${o.code}` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
             <View style={styles.inputCard}>
               <View style={styles.inputRow}>
                 <FileText size={18} color={Colors.neutral[400]} />
@@ -960,6 +974,14 @@ const styles = StyleSheet.create({
   confirmHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   confirmHeadTitle: { fontSize: 14, fontWeight: '700', color: Colors.neutral[900] },
   confirmBody: { fontSize: 13, color: Colors.neutral[600], marginTop: 6, lineHeight: 20 },
+  liveOfferChip: {
+    backgroundColor: Colors.neutral[900],
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  liveOfferText: { color: Colors.neutral[0], fontSize: 13, fontWeight: '700' },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,

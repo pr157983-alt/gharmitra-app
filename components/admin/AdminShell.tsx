@@ -19,6 +19,7 @@ import {
   Calendar,
   MessageSquare,
   Plus,
+  Tag,
 } from 'lucide-react-native';
 import { AdminColors, getAdminRole } from '@/lib/admin';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +32,7 @@ const MAIN: NavItem[] = [
   { label: 'Customers', href: '/admin/customers', icon: Users },
   { label: 'Staff', href: '/admin/technicians', icon: HardHat },
   { label: 'Services', href: '/admin/services', icon: Wrench },
+  { label: 'Offers', href: '/admin/offers', icon: Tag },
   { label: 'Payments', href: '/admin/payments', icon: CreditCard },
 ];
 
@@ -53,7 +55,7 @@ const OTHERS: NavItem[] = [
 const QUICK = [
   { label: 'Add Booking', href: '/booking/new', color: AdminColors.purple, icon: Plus },
   { label: 'Add Technician', href: '/admin/technicians?add=1', color: AdminColors.blue, icon: HardHat },
-  { label: 'Add Service', href: '/admin/services?add=1', color: AdminColors.green, icon: Wrench },
+  { label: 'Add Offer', href: '/admin/offers', color: AdminColors.orange, icon: Tag },
   { label: 'Notification', href: '/admin/notifications', color: AdminColors.orange, icon: Bell },
   { label: 'Commission', href: '/admin/commission', color: AdminColors.purpleDark, icon: Percent },
 ];

@@ -3,17 +3,20 @@ import { View, Text, StyleSheet } from 'react-native';
 import { endOfTodayMs, splitCountdown } from '@/lib/deals';
 import { Colors, Radius } from '@/lib/theme';
 
-export function DealCountdown({ compact }: { compact?: boolean }) {
-  const [left, setLeft] = useState(() => endOfTodayMs() - Date.now());
+export function DealCountdown({ compact, endsAt }: { compact?: boolean; endsAt?: number | null }) {
+  const target = endsAt && endsAt > 0 ? endsAt : endOfTodayMs();
+  const [left, setLeft] = useState(() => target - Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => setLeft(endOfTodayMs() - Date.now()), 1000);
+    const tick = () => setLeft((endsAt && endsAt > 0 ? endsAt : endOfTodayMs()) - Date.now());
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [endsAt]);
 
   const { ended, h, m, s } = splitCountdown(left);
   if (ended) {
-    return <Text style={styles.ended}>Deals refresh tonight</Text>;
+    return <Text style={styles.ended}>Offer ended</Text>;
   }
 
   return (
