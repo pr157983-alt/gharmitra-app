@@ -22,6 +22,8 @@ const FILTERS: { key: string; label: string }[] = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'completed', label: 'Completed' },
 ];
+
+const statusColors: Record<string, string> = {
   pending: Colors.warning[500],
   confirmed: Colors.primary[600],
   in_progress: Colors.accent[500],
