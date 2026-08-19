@@ -10,13 +10,17 @@ import {
   RefreshControl,
   SafeAreaView,
   Dimensions,
+  TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
-import { Star, ChevronRight, Search, ShieldCheck, Clock, BadgePercent } from 'lucide-react-native';
-import { supabase, ServiceCategory, Service } from '@/lib/supabase';
+import { router, useFocusEffect } from 'expo-router';
+import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight } from 'lucide-react-native';
+import { supabase, ServiceCategory, Service, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
 import { CatalogImage } from '@/components/CatalogImage';
+import { loadCoupons } from '@/lib/offers';
+import type { Coupon } from '@/lib/catalogMeta';
+import { readCustomerSession, setCustomerCity } from '@/lib/customerSession';
 
 const { width } = Dimensions.get('window');
 
@@ -26,9 +30,22 @@ const DEFAULT_BANNERS = [
   { title: 'Fridge & Washing', subtitle: 'Ghar ke appliances', color: '#10b981', name: 'Fridge Repair' },
 ];
 
+function couponLabel(c: Coupon) {
+  if (c.percent > 0) return `${c.percent}% OFF`;
+  if (c.flat > 0) return `₹${c.flat} OFF`;
+  return c.code;
+}
+
 export default function HomeScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [popularServices, setPopularServices] = useState<Service[]>([]);
+  const [allServices, setAllServices] = useState<Service[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [recentBooking, setRecentBooking] = useState<Booking | null>(null);
+  const [city, setCity] = useState('');
+  const [editingCity, setEditingCity] = useState(false);
+  const [cityDraft, setCityDraft] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bannerIndex, setBannerIndex] = useState(0);
@@ -45,13 +62,37 @@ export default function HomeScreen() {
   }, [categories]);
 
   const loadData = useCallback(async () => {
+    const session = readCustomerSession();
+    if (session.city) setCity(session.city);
     try {
-      const [catRes, svcRes] = await Promise.all([
+      const [catRes, svcRes, popRes] = await Promise.all([
         supabase.from('service_categories').select('*').order('sort_order'),
+        supabase.from('services').select('*').order('is_popular', { ascending: false }),
         supabase.from('services').select('*').eq('is_popular', true).order('rating', { ascending: false }),
       ]);
       if (catRes.data) setCategories(topLevelCategories(catRes.data));
-      if (svcRes.data) setPopularServices(enabledServices(svcRes.data));
+      if (svcRes.data) setAllServices(enabledServices(svcRes.data));
+      if (popRes.data) setPopularServices(enabledServices(popRes.data));
+      setCoupons((await loadCoupons()).filter((c) => c.enabled !== false));
+      if (session.id || session.phone) {
+        let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(1);
+        if (session.id && session.phone) q = q.or(`customer_id.eq.${session.id},phone.eq.${session.phone}`);
+        else if (session.id) q = q.eq('customer_id', session.id);
+        else q = q.eq('phone', session.phone);
+        const { data } = await q;
+        const row = (Array.isArray(data) ? data[0] : data) as Booking | undefined;
+        setRecentBooking(row || null);
+        if (!session.city && row?.address) {
+          const parts = String(row.address).split(',').map((p) => p.trim()).filter(Boolean);
+          const guessed = parts.length >= 2 ? parts[parts.length - 2] : '';
+          if (guessed) {
+            setCity(guessed);
+            setCustomerCity(guessed);
+          }
+        }
+      } else {
+        setRecentBooking(null);
+      }
     } catch {
       // network error — show empty state
     }
@@ -59,11 +100,24 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
   useEffect(() => {
-    loadData();
     const timeout = setTimeout(() => setLoading(false), 5000);
     return () => clearTimeout(timeout);
-  }, [loadData]);
+  }, []);
+
+  const searchHits = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return allServices.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [search, allServices]);
+
+  const featuredCoupon = coupons[0];
 
   useEffect(() => {
     if (banners.length === 0) return;
@@ -92,31 +146,85 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Image source={require('@/assets/images/icon.png')} style={styles.headerLogo} />
             <View>
-              <Text style={styles.headerGreeting}>Gharmitra</Text>
-              <Text style={styles.headerLocation}>Har Ghar Ki Har Service</Text>
+              <Text style={styles.headerGreeting}>GharMitra</Text>
+              {editingCity ? (
+                <View style={styles.cityEditRow}>
+                  <TextInput
+                    style={styles.cityInput}
+                    value={cityDraft}
+                    onChangeText={setCityDraft}
+                    placeholder="City name"
+                    placeholderTextColor={Colors.neutral[400]}
+                    autoFocus
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const next = cityDraft.trim();
+                      setCity(next);
+                      setCustomerCity(next);
+                      setEditingCity(false);
+                    }}
+                  >
+                    <Text style={styles.citySave}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.locationTap}
+                  onPress={() => {
+                    setCityDraft(city);
+                    setEditingCity(true);
+                  }}
+                >
+                  <MapPin size={12} color={Colors.primary[700]} />
+                  <Text style={styles.headerLocation}>{city || 'City set karein'}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
-          <View style={styles.locationBadge}>
-            <Text style={styles.locationText}>Home</Text>
-          </View>
+          <TouchableOpacity style={styles.bellBtn} onPress={() => router.push('/(tabs)/bookings')}>
+            <Bell size={20} color={Colors.neutral[700]} />
+          </TouchableOpacity>
         </View>
 
-        {/* Search bar */}
-        <TouchableOpacity
-          style={styles.searchBar}
-          onPress={() => router.push('/(tabs)/services')}
-          activeOpacity={0.8}
-        >
+        <View style={styles.searchBar}>
           <Search size={20} color={Colors.neutral[400]} />
-          <Text style={styles.searchPlaceholder}>AC, plumber, safai... dhundhe</Text>
-        </TouchableOpacity>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for a service..."
+            placeholderTextColor={Colors.neutral[400]}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              if (search.trim()) router.push({ pathname: '/(tabs)/services', params: { q: search.trim() } });
+            }}
+          />
+        </View>
+        {searchHits.length > 0 ? (
+          <View style={styles.searchHits}>
+            {searchHits.map((svc) => (
+              <TouchableOpacity
+                key={svc.id}
+                style={styles.searchHit}
+                onPress={() => router.push(`/service/${svc.id}`)}
+              >
+                <Text style={styles.searchHitText}>{svc.name}</Text>
+                <ChevronRight size={16} color={Colors.neutral[400]} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/(tabs)/services', params: { q: search.trim() } })}
+            >
+              <Text style={styles.searchMore}>Saari results dekhein</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
-        {/* Banner carousel */}
         <View style={styles.bannerContainer}>
           {banners.map((banner, i) => (
             <View
@@ -127,9 +235,9 @@ export default function HomeScreen() {
               ]}
             >
               <CatalogImage name={banner.name} style={styles.bannerImage} />
-              <View style={[styles.bannerOverlay, { backgroundColor: `${banner.color}cc` }]}>
-                <Text style={styles.bannerTitle}>{banner.title}</Text>
-                <Text style={styles.bannerSubtitle}>{banner.subtitle}</Text>
+              <View style={styles.bannerOverlay}>
+                <Text style={styles.bannerTitle}>Professional Home Services</Text>
+                <Text style={styles.bannerSubtitle}>Reliable. Affordable. Fast.</Text>
               </View>
             </View>
           ))}
@@ -216,13 +324,53 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* Offer banner */}
-        <TouchableOpacity style={styles.offerBanner} onPress={() => router.push('/(tabs)/services')} activeOpacity={0.85}>
-          <View>
-            <Text style={styles.offerTitle}>Promo code booking pe lagao</Text>
-            <Text style={styles.offerSubtitle}>Admin wale coupon (jaise SAVE50) checkout pe apply honge</Text>
+        {featuredCoupon ? (
+          <TouchableOpacity
+            style={styles.offerBanner}
+            onPress={() => router.push('/(tabs)/services')}
+            activeOpacity={0.85}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.offerTitle}>{featuredCoupon.code}</Text>
+              <Text style={styles.offerSubtitle}>
+                {couponLabel(featuredCoupon)}
+                {featuredCoupon.min_amount ? ` · min ₹${featuredCoupon.min_amount}` : ''} · checkout pe apply
+              </Text>
+            </View>
+            <View style={styles.offerBadge}>
+              <Text style={styles.offerBadgeText}>{couponLabel(featuredCoupon)}</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        {recentBooking ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Booking</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/bookings')}>
+                <Text style={styles.seeAll}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.recentCard}
+              onPress={() => router.push(`/booking/${recentBooking.id}`)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recentName}>{recentBooking.service_name}</Text>
+                <Text style={styles.recentMeta}>
+                  {recentBooking.scheduled_date} · {recentBooking.scheduled_time}
+                </Text>
+              </View>
+              <View style={styles.recentStatus}>
+                <Text style={styles.recentStatusText}>
+                  {recentBooking.status === 'in_progress'
+                    ? 'In Progress'
+                    : recentBooking.status.charAt(0).toUpperCase() + recentBooking.status.slice(1)}
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        ) : null}
 
         <View style={{ height: Spacing.xl }} />
       </ScrollView>
@@ -297,6 +445,105 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.neutral[400],
   },
+  searchInput: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: 14,
+    color: Colors.neutral[900],
+    paddingVertical: 0,
+  },
+  searchHits: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    paddingVertical: Spacing.xs,
+  },
+  searchHit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+  },
+  searchHitText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.neutral[800],
+  },
+  searchMore: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary[700],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  locationTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  cityEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  cityInput: {
+    minWidth: 120,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.primary[600],
+    fontSize: 13,
+    color: Colors.neutral[800],
+    paddingVertical: 0,
+  },
+  citySave: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary[700],
+  },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    gap: Spacing.sm,
+  },
+  recentName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.neutral[900],
+  },
+  recentMeta: {
+    fontSize: 12,
+    color: Colors.neutral[500],
+    marginTop: 4,
+  },
+  recentStatus: {
+    backgroundColor: Colors.success[50],
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  recentStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.success[700],
+  },
   bannerContainer: {
     marginHorizontal: Spacing.lg,
     marginVertical: Spacing.sm,
@@ -327,6 +574,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     paddingHorizontal: Spacing.lg,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
   },
   bannerTitle: {
     fontSize: 24,
@@ -405,7 +653,7 @@ const styles = StyleSheet.create({
   categoryImageWrap: {
     width: 70,
     height: 70,
-    borderRadius: Radius.lg,
+    borderRadius: 35,
     overflow: 'hidden',
     backgroundColor: Colors.neutral[100],
     marginBottom: Spacing.xs + 2,

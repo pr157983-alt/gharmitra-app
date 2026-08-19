@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, Calendar, Clock, User, Phone, MapPin, FileText, AlertCircle, CheckCircle2, Home, LogIn } from 'lucide-react-native';
+import { ArrowLeft, Check, Clock, User, Phone, MapPin, FileText, AlertCircle, CheckCircle2, Home, LogIn, Pencil } from 'lucide-react-native';
 import { supabase, Service, ServicePackage, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { isBlacklisted } from '@/lib/customerSegment';
@@ -19,6 +19,12 @@ import { parseService, addonSum, computeLocationAndSurge, applyCoupon } from '@/
 import { writeJobMeta } from '@/lib/jobMeta';
 import { findCoupon, loadCoupons } from '@/lib/offers';
 import type { Coupon } from '@/lib/catalogMeta';
+import {
+  readCustomerSession,
+  readSavedAddresses,
+  upsertSavedAddress,
+  type SavedAddress,
+} from '@/lib/customerSession';
 
 type FormError = { title: string; message: string } | null;
 
@@ -72,6 +78,10 @@ export default function NewBookingScreen() {
   const [existingBooking, setExistingBooking] = useState<Booking | null>(null);
   const [checkingBooking, setCheckingBooking] = useState(false);
   const [bookedBooking, setBookedBooking] = useState<Booking | null>(null);
+  const [step, setStep] = useState(1);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  const [addrLabel, setAddrLabel] = useState('Home');
 
   const selectedAddons = (() => {
     if (!serviceData) return [];
@@ -118,17 +128,37 @@ export default function NewBookingScreen() {
   }, [loadData]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const cid = sessionStorage.getItem('customer_id');
-      const cname = sessionStorage.getItem('customer_name');
-      const cphone = sessionStorage.getItem('customer_phone');
-      if (cid) {
-        setIsLoggedIn(true);
-        if (cname) setName(cname);
-        if (cphone) setPhone(cphone);
-      } else {
-        setIsLoggedIn(false);
+    const s = readCustomerSession();
+    if (s.id) {
+      setIsLoggedIn(true);
+      if (s.name) setName(s.name);
+      if (s.phone) setPhone(s.phone);
+      if (s.city) setCity(s.city);
+      const stored = readSavedAddresses();
+      setSavedAddresses(stored);
+      if (stored[0]) {
+        setSelectedAddressId(stored[0].id);
+        setAddress(stored[0].line);
+        setCity(stored[0].city);
+        setPincode(stored[0].pincode);
+        setAddrLabel(stored[0].label);
       }
+      if (s.id) {
+        supabase
+          .from('customers')
+          .select('address')
+          .eq('id', s.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            const line = (data?.address as string) || '';
+            if (line && stored.length === 0) {
+              setAddress(line);
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      setIsLoggedIn(false);
     }
   }, []);
 
@@ -232,8 +262,47 @@ export default function NewBookingScreen() {
       return;
     }
 
+    upsertSavedAddress({ label: addrLabel, line: address.trim(), city: city.trim(), pincode: pincode.trim() });
     setBookedBooking(data as Booking);
   };
+
+  const applySavedAddress = (a: SavedAddress) => {
+    setSelectedAddressId(a.id);
+    setAddress(a.line);
+    setCity(a.city);
+    setPincode(a.pincode);
+    setAddrLabel(a.label);
+  };
+
+  const goNext = () => {
+    if (step === 1) {
+      if (!serviceData || !packageData) return;
+      setStep(2);
+      return;
+    }
+    if (step === 2) {
+      if (!name.trim() || phone.trim().length < 10 || !address.trim()) {
+        setFormError({ title: 'Address incomplete', message: 'Name, 10-digit phone aur address zaroori hain.' });
+        return;
+      }
+      setStep(3);
+      return;
+    }
+    if (step === 3) {
+      if (!selectedDate || !selectedTime) {
+        setFormError({ title: 'Slot missing', message: 'Date aur time slot select karein.' });
+        return;
+      }
+      setStep(4);
+    }
+  };
+
+  const goBack = () => {
+    if (step > 1) setStep(step - 1);
+    else router.back();
+  };
+
+  const STEPS = ['Service', 'Address', 'Date', 'Confirm'];
 
   if (loading) {
     return (
@@ -354,265 +423,302 @@ export default function NewBookingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={goBack} style={styles.backButton}>
           <ArrowLeft size={22} color={Colors.neutral[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Book Service</Text>
+        <Text style={styles.headerTitle}>Book a Service</Text>
+      </View>
+
+      <View style={styles.stepper}>
+        {STEPS.map((label, i) => {
+          const n = i + 1;
+          const active = step === n;
+          const done = step > n;
+          return (
+            <View key={label} style={styles.stepItem}>
+              <View style={[styles.stepDot, (active || done) && styles.stepDotOn]}>
+                <Text style={[styles.stepDotText, (active || done) && styles.stepDotTextOn]}>{n}</Text>
+              </View>
+              <Text style={[styles.stepLabel, active && styles.stepLabelOn]}>{label}</Text>
+            </View>
+          );
+        })}
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Summary card */}
-        {serviceData && packageData && (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Service</Text>
-              <Text style={styles.summaryValue}>{serviceData.name}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Package</Text>
-              <Text style={styles.summaryValue}>{packageData.name}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Duration</Text>
-              <Text style={styles.summaryValue}>{packageData.duration}</Text>
-            </View>
-            {selectedAddons.map((a) => (
-              <View key={a.id} style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Add-on</Text>
-                <Text style={styles.summaryValue}>
-                  {a.name} +₹{a.price}
-                </Text>
+        {step === 1 && serviceData && packageData && (
+          <>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Service</Text>
+                <Text style={styles.summaryValue}>{serviceData.name}</Text>
               </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Package</Text>
+                <Text style={styles.summaryValue}>{packageData.name}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Duration</Text>
+                <Text style={styles.summaryValue}>{packageData.duration}</Text>
+              </View>
+              {selectedAddons.map((a) => (
+                <View key={a.id} style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Add-on</Text>
+                  <Text style={styles.summaryValue}>{a.name} +₹{a.price}</Text>
+                </View>
+              ))}
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryTotalLabel}>Starting</Text>
+                <Text style={styles.summaryTotal}>₹{packageData.price}</Text>
+              </View>
+            </View>
+            <Text style={styles.checkingText}>Service catalog se select ho chuka hai. Address ke liye Next dabao.</Text>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            {checkingBooking && (
+              <View style={styles.checkingRow}>
+                <ActivityIndicator size="small" color={Colors.primary[600]} />
+                <Text style={styles.checkingText}>Checking existing bookings...</Text>
+              </View>
+            )}
+            {existingBooking && (
+              <View style={styles.existingBookingCard}>
+                <View style={styles.existingBookingHeader}>
+                  <AlertCircle size={18} color={Colors.warning[600]} />
+                  <Text style={styles.existingBookingTitle}>Already Booked!</Text>
+                </View>
+                <Text style={styles.existingBookingText}>
+                  You have a {existingBooking.status} booking for {existingBooking.service_name} on {existingBooking.scheduled_date} at {existingBooking.scheduled_time}.
+                </Text>
+                <TouchableOpacity style={styles.viewBookingsBtn} onPress={() => router.replace('/(tabs)/bookings')}>
+                  <Text style={styles.viewBookingsBtnText}>View My Bookings</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <Text style={styles.sectionTitle}>Saved Addresses</Text>
+            {savedAddresses.map((a) => (
+              <TouchableOpacity
+                key={a.id}
+                style={[styles.addrCard, selectedAddressId === a.id && styles.addrCardOn]}
+                onPress={() => applySavedAddress(a)}
+              >
+                <View style={[styles.radio, selectedAddressId === a.id && styles.radioOn]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addrLabel}>{a.label}</Text>
+                  <Text style={styles.addrLine}>{[a.line, a.city, a.pincode].filter(Boolean).join(', ')}</Text>
+                  <Text style={styles.addrPhone}>{phone}</Text>
+                </View>
+              </TouchableOpacity>
             ))}
-            {pricing.location_extra > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Location</Text>
-                <Text style={styles.summaryValue}>
-                  {pricing.location_label} +₹{pricing.location_extra}
-                </Text>
-              </View>
-            )}
-            {pricing.surge_extra > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Peak / surge</Text>
-                <Text style={styles.summaryValue}>
-                  {pricing.surge_label || 'Peak'} +₹{pricing.surge_extra}
-                </Text>
-              </View>
-            )}
-            {couponDiscount > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Coupon {applied?.code}</Text>
-                <Text style={styles.summaryValue}>-₹{couponDiscount}</Text>
-              </View>
-            )}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotal}>₹{bookingTotal}</Text>
+            <TouchableOpacity
+              style={[styles.addrCard, selectedAddressId === 'new' && styles.addrCardOn]}
+              onPress={() => setSelectedAddressId('new')}
+            >
+              <View style={[styles.radio, selectedAddressId === 'new' && styles.radioOn]} />
+              <Text style={styles.addrLabel}>Naya address</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.sectionTitle}>Contact & Address</Text>
+            <View style={styles.labelRow}>
+              {['Home', 'Office', 'Other'].map((l) => (
+                <TouchableOpacity
+                  key={l}
+                  style={[styles.labelChip, addrLabel === l && styles.labelChipOn]}
+                  onPress={() => setAddrLabel(l)}
+                >
+                  <Text style={[styles.labelChipText, addrLabel === l && styles.labelChipTextOn]}>{l}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
-        )}
-
-        {/* Contact details */}
-        <Text style={styles.sectionTitle}>Contact Details</Text>
-        {checkingBooking && (
-          <View style={styles.checkingRow}>
-            <ActivityIndicator size="small" color={Colors.primary[600]} />
-            <Text style={styles.checkingText}>Checking existing bookings...</Text>
-          </View>
-        )}
-        {existingBooking && (
-          <View style={styles.existingBookingCard}>
-            <View style={styles.existingBookingHeader}>
-              <AlertCircle size={18} color={Colors.warning[600]} />
-              <Text style={styles.existingBookingTitle}>Already Booked!</Text>
+            <View style={styles.inputCard}>
+              <View style={styles.inputRow}>
+                <User size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="Full Name *" placeholderTextColor={Colors.neutral[400]} value={name} onChangeText={setName} />
+              </View>
+              <View style={styles.inputDivider} />
+              <View style={styles.inputRow}>
+                <Phone size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="Phone Number *" placeholderTextColor={Colors.neutral[400]} value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={10} />
+              </View>
+              <View style={styles.inputDivider} />
+              <View style={styles.inputRow}>
+                <MapPin size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="Full Address *" placeholderTextColor={Colors.neutral[400]} value={address} onChangeText={(t) => { setAddress(t); setSelectedAddressId('new'); }} multiline />
+              </View>
+              <View style={styles.inputDivider} />
+              <View style={styles.inputRow}>
+                <MapPin size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="City" placeholderTextColor={Colors.neutral[400]} value={city} onChangeText={setCity} />
+              </View>
+              <View style={styles.inputDivider} />
+              <View style={styles.inputRow}>
+                <MapPin size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="Pincode" placeholderTextColor={Colors.neutral[400]} value={pincode} onChangeText={setPincode} keyboardType="numeric" maxLength={6} />
+              </View>
             </View>
-            <Text style={styles.existingBookingText}>
-              You have a {existingBooking.status} booking for {existingBooking.service_name} on {existingBooking.scheduled_date} at {existingBooking.scheduled_time}.
-            </Text>
-            <TouchableOpacity
-              style={styles.viewBookingsBtn}
-              onPress={() => router.replace('/(tabs)/bookings')}
-            >
-              <Text style={styles.viewBookingsBtnText}>View My Bookings</Text>
-            </TouchableOpacity>
-          </View>
+            {(svcMeta.location_prices?.length || svcMeta.surge_rules?.length) ? (
+              <Text style={styles.checkingText}>City/pincode aur night slot pe extra charge auto lagega.</Text>
+            ) : null}
+          </>
         )}
-        <View style={styles.inputCard}>
-          <View style={styles.inputRow}>
-            <User size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="Full Name *"
-              placeholderTextColor={Colors.neutral[400]}
-              value={name}
-              onChangeText={setName}
-            />
-          </View>
-          <View style={styles.inputDivider} />
-          <View style={styles.inputRow}>
-            <Phone size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="Phone Number *"
-              placeholderTextColor={Colors.neutral[400]}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              maxLength={10}
-            />
-          </View>
-          <View style={styles.inputDivider} />
-          <View style={styles.inputRow}>
-            <MapPin size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="Full Address *"
-              placeholderTextColor={Colors.neutral[400]}
-              value={address}
-              onChangeText={setAddress}
-              multiline
-              numberOfLines={2}
-            />
-          </View>
-          <View style={styles.inputDivider} />
-          <View style={styles.inputRow}>
-            <MapPin size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="City (Delhi, Patna...)"
-              placeholderTextColor={Colors.neutral[400]}
-              value={city}
-              onChangeText={setCity}
-            />
-          </View>
-          <View style={styles.inputDivider} />
-          <View style={styles.inputRow}>
-            <MapPin size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="Pincode"
-              placeholderTextColor={Colors.neutral[400]}
-              value={pincode}
-              onChangeText={setPincode}
-              keyboardType="numeric"
-              maxLength={6}
-            />
-          </View>
-        </View>
-        {(svcMeta.location_prices?.length || svcMeta.surge_rules?.length) ? (
-          <Text style={styles.checkingText}>City/pincode aur night slot pe extra charge auto lagega.</Text>
-        ) : null}
 
-        <Text style={styles.sectionTitle}>Select Date</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateScroll}>
-          {days.map((d) => (
-            <TouchableOpacity
-              key={d.date}
-              style={[styles.dateCard, selectedDate === d.fullDate && styles.dateCardSelected]}
-              onPress={() => setSelectedDate(d.fullDate)}
-            >
-              <Text style={[styles.dateDay, selectedDate === d.fullDate && styles.dateTextSelected]}>
-                {d.day}
+        {step === 3 && (
+          <>
+            <Text style={styles.sectionTitle}>Select Date</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateScroll}>
+              {days.map((d) => (
+                <TouchableOpacity
+                  key={d.date}
+                  style={[styles.dateCard, selectedDate === d.fullDate && styles.dateCardSelected]}
+                  onPress={() => setSelectedDate(d.fullDate)}
+                >
+                  <Text style={[styles.dateDay, selectedDate === d.fullDate && styles.dateTextSelected]}>{d.day}</Text>
+                  <Text style={[styles.dateNum, selectedDate === d.fullDate && styles.dateTextSelected]}>{d.dateNum}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <Text style={styles.sectionTitle}>Select Time Slot</Text>
+            <View style={styles.timeGrid}>
+              {timeSlots.map((slot) => (
+                <TouchableOpacity
+                  key={slot}
+                  style={[styles.timeChip, selectedTime === slot && styles.timeChipSelected]}
+                  onPress={() => setSelectedTime(slot)}
+                >
+                  <Text style={[styles.timeText, selectedTime === slot && styles.timeTextSelected]}>{slot}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        {step === 4 && (
+          <>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Service</Text>
+                <Text style={styles.summaryValue}>{serviceData?.name}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Package</Text>
+                <Text style={styles.summaryValue}>{packageData?.name} · ₹{packageData?.price}</Text>
+              </View>
+              {selectedAddons.map((a) => (
+                <View key={a.id} style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Add-on</Text>
+                  <Text style={styles.summaryValue}>{a.name} +₹{a.price}</Text>
+                </View>
+              ))}
+              {pricing.location_extra > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Location</Text>
+                  <Text style={styles.summaryValue}>{pricing.location_label} +₹{pricing.location_extra}</Text>
+                </View>
+              )}
+              {pricing.surge_extra > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Peak / surge</Text>
+                  <Text style={styles.summaryValue}>{pricing.surge_label || 'Peak'} +₹{pricing.surge_extra}</Text>
+                </View>
+              )}
+              {couponDiscount > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Coupon {applied?.code}</Text>
+                  <Text style={styles.summaryValue}>-₹{couponDiscount}</Text>
+                </View>
+              )}
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryTotalLabel}>Total</Text>
+                <Text style={styles.summaryTotal}>₹{bookingTotal}</Text>
+              </View>
+            </View>
+            <View style={styles.confirmBlock}>
+              <View style={styles.confirmHead}>
+                <Text style={styles.confirmHeadTitle}>Address</Text>
+                <TouchableOpacity onPress={() => setStep(2)}><Pencil size={14} color={Colors.primary[700]} /></TouchableOpacity>
+              </View>
+              <Text style={styles.confirmBody}>{[address, city, pincode].filter(Boolean).join(', ')}</Text>
+            </View>
+            <View style={styles.confirmBlock}>
+              <View style={styles.confirmHead}>
+                <Text style={styles.confirmHeadTitle}>Date & Time</Text>
+                <TouchableOpacity onPress={() => setStep(3)}><Pencil size={14} color={Colors.primary[700]} /></TouchableOpacity>
+              </View>
+              <Text style={styles.confirmBody}>{selectedDate} · {selectedTime}</Text>
+            </View>
+            <View style={styles.confirmBlock}>
+              <Text style={styles.confirmHeadTitle}>Payment</Text>
+              <Text style={styles.confirmBody}>Cash on Service</Text>
+            </View>
+            <Text style={styles.sectionTitle}>Promo code</Text>
+            <View style={styles.inputCard}>
+              <View style={styles.inputRow}>
+                <FileText size={18} color={Colors.neutral[400]} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="SAVE50"
+                  placeholderTextColor={Colors.neutral[400]}
+                  value={promo}
+                  onChangeText={(v) => { setPromo(v.toUpperCase()); setCouponMsg(''); }}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </View>
+            {promo.trim() ? (
+              <Text style={styles.checkingText}>
+                {couponDiscount > 0 ? `Coupon applied: -₹${couponDiscount}` : couponMsg || 'Code invalid ya minimum amount poora nahi.'}
               </Text>
-              <Text style={[styles.dateNum, selectedDate === d.fullDate && styles.dateTextSelected]}>
-                {d.dateNum}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Time selection */}
-        <Text style={styles.sectionTitle}>Select Time Slot</Text>
-        <View style={styles.timeGrid}>
-          {timeSlots.map((slot) => (
-            <TouchableOpacity
-              key={slot}
-              style={[styles.timeChip, selectedTime === slot && styles.timeChipSelected]}
-              onPress={() => setSelectedTime(slot)}
-            >
-              <Text style={[styles.timeText, selectedTime === slot && styles.timeTextSelected]}>
-                {slot}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.sectionTitle}>Promo code</Text>
-        <View style={styles.inputCard}>
-          <View style={styles.inputRow}>
-            <FileText size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="SAVE50"
-              placeholderTextColor={Colors.neutral[400]}
-              value={promo}
-              onChangeText={(v) => {
-                setPromo(v.toUpperCase());
-                setCouponMsg('');
-              }}
-              autoCapitalize="characters"
-            />
-          </View>
-        </View>
-        {promo.trim() ? (
-          <Text style={styles.checkingText}>
-            {couponDiscount > 0
-              ? `Coupon applied: -₹${couponDiscount}`
-              : couponMsg || 'Code invalid ya minimum amount poora nahi.'}
-          </Text>
-        ) : null}
-
-        {/* Notes */}
-        <Text style={styles.sectionTitle}>Additional Notes (Optional)</Text>
-        <View style={styles.inputCard}>
-          <View style={styles.inputRow}>
-            <FileText size={18} color={Colors.neutral[400]} />
-            <TextInput
-              style={styles.input}
-              placeholder="Any special instructions..."
-              placeholderTextColor={Colors.neutral[400]}
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              numberOfLines={2}
-            />
-          </View>
-        </View>
+            ) : null}
+            <Text style={styles.sectionTitle}>Notes (optional)</Text>
+            <View style={styles.inputCard}>
+              <View style={styles.inputRow}>
+                <FileText size={18} color={Colors.neutral[400]} />
+                <TextInput style={styles.input} placeholder="Any special instructions..." placeholderTextColor={Colors.neutral[400]} value={notes} onChangeText={setNotes} multiline />
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <View>
-          <Text style={styles.bottomLabel}>Total Amount</Text>
+          <Text style={styles.bottomLabel}>{step === 4 ? 'Total Amount' : `Step ${step} of 4`}</Text>
           <Text style={styles.bottomPrice}>₹{bookingTotal}</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.confirmButton, (submitting || !!existingBooking) && styles.confirmButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={submitting || !!existingBooking}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color={Colors.neutral[0]} />
-          ) : existingBooking ? (
-            <>
-              <AlertCircle size={18} color={Colors.neutral[0]} />
-              <Text style={styles.confirmText}>Already Booked</Text>
-            </>
-          ) : (
-            <>
-              <Check size={18} color={Colors.neutral[0]} />
-              <Text style={styles.confirmText}>Confirm Booking</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {step < 4 ? (
+          <TouchableOpacity style={styles.confirmButton} onPress={goNext}>
+            <Text style={styles.confirmText}>Next</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.confirmButton, (submitting || !!existingBooking) && styles.confirmButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={submitting || !!existingBooking}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color={Colors.neutral[0]} />
+            ) : existingBooking ? (
+              <>
+                <AlertCircle size={18} color={Colors.neutral[0]} />
+                <Text style={styles.confirmText}>Already Booked</Text>
+              </>
+            ) : (
+              <>
+                <Check size={18} color={Colors.neutral[0]} />
+                <Text style={styles.confirmText}>Confirm Booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {formError && (
@@ -785,6 +891,75 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.neutral[900],
   },
+  stepper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.neutral[0],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral[200],
+  },
+  stepItem: { alignItems: 'center', flex: 1 },
+  stepDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepDotOn: { backgroundColor: Colors.neutral[800] },
+  stepDotText: { fontSize: 12, fontWeight: '700', color: Colors.neutral[500] },
+  stepDotTextOn: { color: Colors.neutral[0] },
+  stepLabel: { fontSize: 11, color: Colors.neutral[400], marginTop: 4, fontWeight: '600' },
+  stepLabelOn: { color: Colors.neutral[800] },
+  addrCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm + 2,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Colors.neutral[200],
+    marginBottom: Spacing.sm,
+  },
+  addrCardOn: { borderColor: Colors.neutral[800], backgroundColor: Colors.neutral[50] },
+  radio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: Colors.neutral[300],
+  },
+  radioOn: { borderColor: Colors.neutral[800], backgroundColor: Colors.neutral[800] },
+  addrLabel: { fontSize: 14, fontWeight: '700', color: Colors.neutral[900] },
+  addrLine: { fontSize: 13, color: Colors.neutral[600], marginTop: 2 },
+  addrPhone: { fontSize: 12, color: Colors.neutral[400], marginTop: 2 },
+  labelRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
+  labelChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    backgroundColor: Colors.neutral[0],
+  },
+  labelChipOn: { backgroundColor: Colors.neutral[800], borderColor: Colors.neutral[800] },
+  labelChipText: { fontSize: 12, fontWeight: '700', color: Colors.neutral[600] },
+  labelChipTextOn: { color: Colors.neutral[0] },
+  confirmBlock: {
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    marginBottom: Spacing.sm,
+  },
+  confirmHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  confirmHeadTitle: { fontSize: 14, fontWeight: '700', color: Colors.neutral[900] },
+  confirmBody: { fontSize: 13, color: Colors.neutral[600], marginTop: 6, lineHeight: 20 },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,

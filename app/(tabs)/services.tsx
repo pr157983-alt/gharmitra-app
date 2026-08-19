@@ -10,7 +10,7 @@ import {
   SafeAreaView,
   TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Search, Star } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
@@ -22,8 +22,13 @@ export default function ServicesScreen() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState('');
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [search, setSearch] = useState(q ? String(q) : '');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (q) setSearch(String(q));
+  }, [q]);
 
   const loadData = useCallback(async () => {
     try {

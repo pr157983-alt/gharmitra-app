@@ -15,7 +15,13 @@ import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { readCustomerSession } from '@/lib/customerSession';
 
-const statusColors: Record<string, string> = {
+const FILTERS: { key: string; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'confirmed', label: 'Accepted' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'completed', label: 'Completed' },
+];
   pending: Colors.warning[500],
   confirmed: Colors.primary[600],
   in_progress: Colors.accent[500],
@@ -31,6 +37,7 @@ export default function BookingsScreen() {
   const [customerName, setCustomerName] = useState<string>('');
 
   const [customerPhone, setCustomerPhone] = useState('');
+  const [filter, setFilter] = useState('all');
 
   const hydrate = useCallback(() => {
     const s = readCustomerSession();
@@ -115,12 +122,24 @@ export default function BookingsScreen() {
         </Text>
       </View>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.filterChip, filter === f.key && styles.filterChipOn]}
+            onPress={() => setFilter(f.key)}
+          >
+            <Text style={[styles.filterText, filter === f.key && styles.filterTextOn]}>{f.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       <ScrollView
         contentContainerStyle={styles.listContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        {bookings.length === 0 ? (
+        {bookings.filter((b) => filter === 'all' || b.status === filter).length === 0 ? (
           <View style={styles.emptyState}>
             <Package size={48} color={Colors.neutral[300]} />
             <Text style={styles.emptyTitle}>Koi booking nahi</Text>
@@ -133,7 +152,9 @@ export default function BookingsScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          bookings.map((booking) => (
+          bookings
+            .filter((b) => filter === 'all' || b.status === filter)
+            .map((booking) => (
             <TouchableOpacity
               key={booking.id}
               style={styles.bookingCard}
@@ -195,6 +216,18 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
   headerTitle: { fontSize: 24, fontWeight: '700', color: Colors.neutral[900] },
   headerSubtitle: { fontSize: 14, color: Colors.neutral[500], marginTop: 2 },
+  filterRow: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.sm, gap: Spacing.sm },
+  filterChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.neutral[0],
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+  },
+  filterChipOn: { backgroundColor: Colors.neutral[800], borderColor: Colors.neutral[800] },
+  filterText: { fontSize: 12, fontWeight: '700', color: Colors.neutral[600] },
+  filterTextOn: { color: Colors.neutral[0] },
   listContainer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.md },
   emptyState: { alignItems: 'center', paddingVertical: Spacing.xxl * 2, gap: Spacing.sm },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.neutral[700], marginTop: Spacing.md },
