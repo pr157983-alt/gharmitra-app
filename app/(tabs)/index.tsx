@@ -13,7 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight } from 'lucide-react-native';
+import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight, Package } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service, Booking, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, parseService } from '@/lib/catalogMeta';
@@ -47,6 +47,7 @@ export default function HomeScreen() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [promoOffers, setPromoOffers] = useState<PromoOffer[]>([]);
   const [recentBooking, setRecentBooking] = useState<Booking | null>(null);
+  const [activeOrder, setActiveOrder] = useState<Booking | null>(null);
   const [city, setCity] = useState('');
   const [editingCity, setEditingCity] = useState(false);
   const [cityDraft, setCityDraft] = useState('');
@@ -70,26 +71,30 @@ export default function HomeScreen() {
     const session = readCustomerSession();
     if (session.city) setCity(session.city);
     try {
-      const [catRes, svcRes, popRes, pkgRes] = await Promise.all([
+      const [catRes, svcRes, popRes, pkgRes, couponList, promoList] = await Promise.all([
         supabase.from('service_categories').select('*').order('sort_order'),
         supabase.from('services').select('*').order('is_popular', { ascending: false }),
         supabase.from('services').select('*').eq('is_popular', true).order('rating', { ascending: false }),
         supabase.from('service_packages').select('*').order('price'),
+        loadCoupons(),
+        loadPromoOffers(),
       ]);
       if (catRes.data) setCategories(topLevelCategories(catRes.data));
       if (svcRes.data) setAllServices(enabledServices(svcRes.data));
       if (popRes.data) setPopularServices(enabledServices(popRes.data));
       if (pkgRes.data) setPackages(pkgRes.data);
-      setCoupons((await loadCoupons()).filter((c) => c.enabled !== false));
-      setPromoOffers(await loadPromoOffers());
+      setCoupons(couponList.filter((c) => c.enabled !== false));
+      setPromoOffers(promoList);
       if (session.id || session.phone) {
-        let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(1);
+        let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(12);
         if (session.id && session.phone) q = q.or(`customer_id.eq.${session.id},phone.eq.${session.phone}`);
         else if (session.id) q = q.eq('customer_id', session.id);
         else q = q.eq('phone', session.phone);
         const { data } = await q;
-        const row = (Array.isArray(data) ? data[0] : data) as Booking | undefined;
-        setRecentBooking(row || null);
+        const list = (Array.isArray(data) ? data : data ? [data] : []) as Booking[];
+        setRecentBooking(list[0] || null);
+        setActiveOrder(list.find((x) => ['pending', 'confirmed', 'in_progress'].includes(x.status)) || null);
+        const row = list[0];
         if (!session.city && row?.address) {
           const parts = String(row.address).split(',').map((p) => p.trim()).filter(Boolean);
           const guessed = parts.length >= 2 ? parts[parts.length - 2] : '';
@@ -100,6 +105,7 @@ export default function HomeScreen() {
         }
       } else {
         setRecentBooking(null);
+        setActiveOrder(null);
       }
     } catch {
       // network error — show empty state
@@ -163,7 +169,7 @@ export default function HomeScreen() {
     loadData();
   }, [loadData]);
 
-  if (loading) {
+  if (loading && categories.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary[600]} />
@@ -222,6 +228,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.searchWrap}>
         <View style={styles.searchBar}>
           <Search size={20} color={Colors.neutral[400]} />
           <TextInput
@@ -255,6 +262,31 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+        </View>
+
+        <View style={styles.activeSlot}>
+          {activeOrder ? (
+            <TouchableOpacity style={styles.activeCard} onPress={() => router.push(`/booking/${activeOrder.id}`)} activeOpacity={0.85}>
+              <View style={styles.activeTop}>
+                <Package size={16} color={Colors.neutral[0]} />
+                <Text style={styles.activeEyebrow}>Active order</Text>
+              </View>
+              <Text style={styles.activeName}>{activeOrder.service_name}</Text>
+              <Text style={styles.activeMeta}>
+                {activeOrder.status === 'in_progress'
+                  ? 'In Progress'
+                  : activeOrder.status.charAt(0).toUpperCase() + activeOrder.status.slice(1)}
+                {' · '}
+                {activeOrder.scheduled_date} {activeOrder.scheduled_time}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.activeEmpty} onPress={() => router.push('/(tabs)/services')} activeOpacity={0.85}>
+              <Text style={styles.activeEmptyTitle}>No active order</Text>
+              <Text style={styles.activeEmptySub}>Service book karke yahan live status dikhega</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <View style={styles.bannerContainer}>
           {banners.map((banner, i) => (
@@ -297,33 +329,6 @@ export default function HomeScreen() {
             <Text style={styles.trustText}>Best Prices</Text>
           </View>
         </View>
-
-        {liveOffers.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>Discount offers</Text>
-                <Text style={styles.sectionHint}>Admin se on/off · timeline ke andar</Text>
-              </View>
-            </View>
-            {liveOffers.map((o) => (
-              <TouchableOpacity
-                key={o.id}
-                style={styles.promoCard}
-                onPress={() => router.push('/(tabs)/services')}
-                activeOpacity={0.85}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.promoEyebrow}>{offerDiscountLabel(o)}</Text>
-                  <Text style={styles.promoTitle}>{o.title}</Text>
-                  {o.subtitle ? <Text style={styles.promoSub}>{o.subtitle}</Text> : null}
-                  {o.code ? <Text style={styles.promoCode}>Code: {o.code}</Text> : null}
-                </View>
-                <DealCountdown compact endsAt={o.ends_at ? new Date(o.ends_at).getTime() : null} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
 
         {/* Categories */}
         <View style={styles.section}>
@@ -391,6 +396,33 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+        ) : null}
+
+        {liveOffers.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Discount offers</Text>
+                <Text style={styles.sectionHint}>Admin se on/off · timeline ke andar</Text>
+              </View>
+            </View>
+            {liveOffers.map((o) => (
+              <TouchableOpacity
+                key={o.id}
+                style={styles.promoCard}
+                onPress={() => router.push('/(tabs)/services')}
+                activeOpacity={0.85}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.promoEyebrow}>{offerDiscountLabel(o)}</Text>
+                  <Text style={styles.promoTitle}>{o.title}</Text>
+                  {o.subtitle ? <Text style={styles.promoSub}>{o.subtitle}</Text> : null}
+                  {o.code ? <Text style={styles.promoCode}>Code: {o.code}</Text> : null}
+                </View>
+                <DealCountdown compact endsAt={o.ends_at ? new Date(o.ends_at).getTime() : null} />
+              </TouchableOpacity>
+            ))}
           </View>
         ) : null}
 
@@ -514,35 +546,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {recentBooking ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Booking</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/bookings')}>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.recentCard}
-              onPress={() => router.push(`/booking/${recentBooking.id}`)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.recentName}>{recentBooking.service_name}</Text>
-                <Text style={styles.recentMeta}>
-                  {recentBooking.scheduled_date} · {recentBooking.scheduled_time}
-                </Text>
-              </View>
-              <View style={styles.recentStatus}>
-                <Text style={styles.recentStatusText}>
-                  {recentBooking.status === 'in_progress'
-                    ? 'In Progress'
-                    : recentBooking.status.charAt(0).toUpperCase() + recentBooking.status.slice(1)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
         <View style={{ height: Spacing.xxl + 24 }} />
       </ScrollView>
     </SafeAreaView>
@@ -611,6 +614,54 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.neutral[200],
   },
+  searchWrap: {
+    position: 'relative',
+    zIndex: 20,
+  },
+  searchHits: {
+    position: 'absolute',
+    left: Spacing.lg,
+    right: Spacing.lg,
+    top: 52,
+    zIndex: 30,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    paddingVertical: Spacing.xs,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  activeSlot: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    minHeight: 88,
+  },
+  activeCard: {
+    backgroundColor: Colors.neutral[800],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    minHeight: 88,
+    justifyContent: 'center',
+  },
+  activeTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  activeEyebrow: { color: Colors.neutral[0], fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  activeName: { color: Colors.neutral[0], fontSize: 16, fontWeight: '800' },
+  activeMeta: { color: Colors.neutral[300], marginTop: 4, fontSize: 12 },
+  activeEmpty: {
+    minHeight: 88,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    backgroundColor: Colors.neutral[0],
+    padding: Spacing.md,
+    justifyContent: 'center',
+  },
+  activeEmptyTitle: { fontWeight: '800', color: Colors.neutral[800], fontSize: 15 },
+  activeEmptySub: { color: Colors.neutral[500], marginTop: 4, fontSize: 12 },
   searchPlaceholder: {
     marginLeft: Spacing.sm,
     fontSize: 14,
@@ -622,15 +673,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.neutral[900],
     paddingVertical: 0,
-  },
-  searchHits: {
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.neutral[0],
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    paddingVertical: Spacing.xs,
   },
   searchHit: {
     flexDirection: 'row',

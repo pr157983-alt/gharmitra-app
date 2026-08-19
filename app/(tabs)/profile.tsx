@@ -16,7 +16,6 @@ import {
   BadgePercent,
   Star,
   Settings,
-  Package,
 } from 'lucide-react-native';
 import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
@@ -31,7 +30,6 @@ export default function ProfileScreen() {
   const [bookingsCount, setBookingsCount] = useState(0);
   const [spend, setSpend] = useState(0);
   const [complaintsCount, setComplaintsCount] = useState(0);
-  const [activeOrder, setActiveOrder] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -45,7 +43,6 @@ export default function ProfileScreen() {
       setSpend(0);
       setComplaintsCount(0);
       setAddress('');
-      setActiveOrder(null);
       setLoading(false);
       return;
     }
@@ -64,7 +61,6 @@ export default function ProfileScreen() {
       setSpend(list.filter((x) => x.status === 'completed').reduce((n, x) => n + Number(x.total_amount || 0), 0));
       setComplaintsCount((cRes.data || []).length);
       setAddress((uRes.data?.address as string) || list[0]?.address || '');
-      setActiveOrder(list.find((x) => ['pending', 'confirmed', 'in_progress'].includes(x.status)) || null);
     } catch {
       /* ignore */
     }
@@ -129,22 +125,6 @@ export default function ProfileScreen() {
         {customerId ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Activity</Text>
-            {activeOrder ? (
-              <TouchableOpacity style={styles.activeCard} onPress={() => router.push(`/booking/${activeOrder.id}`)}>
-                <View style={styles.activeTop}>
-                  <Package size={16} color={Colors.neutral[0]} />
-                  <Text style={styles.activeEyebrow}>Active order</Text>
-                </View>
-                <Text style={styles.activeName}>{activeOrder.service_name}</Text>
-                <Text style={styles.activeMeta}>
-                  {activeOrder.status === 'in_progress'
-                    ? 'In Progress'
-                    : activeOrder.status.charAt(0).toUpperCase() + activeOrder.status.slice(1)}
-                  {' · '}
-                  {activeOrder.scheduled_date} {activeOrder.scheduled_time}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
             <View style={styles.card}>
               <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/(tabs)/bookings')}>
                 <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.primary[600]}15` }]}>
