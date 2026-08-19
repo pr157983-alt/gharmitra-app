@@ -17,7 +17,6 @@ import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
 import { CatalogImage } from '@/components/CatalogImage';
-import { catalogPhoto, fallbackPhotoForName } from '@/lib/catalogPhotos';
 
 const { width } = Dimensions.get('window');
 
@@ -40,10 +39,9 @@ export default function HomeScreen() {
         subtitle: 'Book verified professionals',
         color: ['#1189f5', '#0ea5e9', '#10b981', '#f59e0b'][i % 4],
         name: cat.name,
-        image: catalogPhoto(cat.name, cat.image_url),
       }));
     }
-    return DEFAULT_BANNERS.map((b) => ({ ...b, image: fallbackPhotoForName(b.name) }));
+    return DEFAULT_BANNERS;
   }, [categories]);
 
   const loadData = useCallback(async () => {
@@ -128,7 +126,7 @@ export default function HomeScreen() {
                 { opacity: i === bannerIndex ? 1 : 0, zIndex: i === bannerIndex ? 1 : 0 },
               ]}
             >
-              <CatalogImage name={banner.name} imageUrl={banner.image} style={styles.bannerImage} />
+              <CatalogImage name={banner.name} style={styles.bannerImage} />
               <View style={[styles.bannerOverlay, { backgroundColor: `${banner.color}cc` }]}>
                 <Text style={styles.bannerTitle}>{banner.title}</Text>
                 <Text style={styles.bannerSubtitle}>{banner.subtitle}</Text>
