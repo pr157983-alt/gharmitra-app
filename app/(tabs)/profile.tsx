@@ -13,8 +13,12 @@ import {
   MessageSquare,
   CalendarCheck,
   LogIn,
+  BadgePercent,
+  Star,
+  Settings,
+  Package,
 } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
+import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { clearCustomerSession, readCustomerSession } from '@/lib/customerSession';
 import { formatINR } from '@/lib/admin';
@@ -27,6 +31,7 @@ export default function ProfileScreen() {
   const [bookingsCount, setBookingsCount] = useState(0);
   const [spend, setSpend] = useState(0);
   const [complaintsCount, setComplaintsCount] = useState(0);
+  const [activeOrder, setActiveOrder] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -40,11 +45,12 @@ export default function ProfileScreen() {
       setSpend(0);
       setComplaintsCount(0);
       setAddress('');
+      setActiveOrder(null);
       setLoading(false);
       return;
     }
     try {
-      let bq = supabase.from('bookings').select('id,total_amount,status,address,phone');
+      let bq = supabase.from('bookings').select('*').order('created_at', { ascending: false });
       if (s.id && s.phone) bq = bq.or(`customer_id.eq.${s.id},phone.eq.${s.phone}`);
       else if (s.id) bq = bq.eq('customer_id', s.id);
       else bq = bq.eq('phone', s.phone);
@@ -53,11 +59,12 @@ export default function ProfileScreen() {
         s.id ? supabase.from('complaints').select('id').eq('customer_id', s.id) : Promise.resolve({ data: [] }),
         s.id ? supabase.from('customers').select('address').eq('id', s.id).maybeSingle() : Promise.resolve({ data: null }),
       ]);
-      const list = bRes.data || [];
+      const list = (bRes.data || []) as Booking[];
       setBookingsCount(list.length);
       setSpend(list.filter((x) => x.status === 'completed').reduce((n, x) => n + Number(x.total_amount || 0), 0));
       setComplaintsCount((cRes.data || []).length);
       setAddress((uRes.data?.address as string) || list[0]?.address || '');
+      setActiveOrder(list.find((x) => ['pending', 'confirmed', 'in_progress'].includes(x.status)) || null);
     } catch {
       /* ignore */
     }
@@ -122,12 +129,45 @@ export default function ProfileScreen() {
         {customerId ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Activity</Text>
+            {activeOrder ? (
+              <TouchableOpacity style={styles.activeCard} onPress={() => router.push(`/booking/${activeOrder.id}`)}>
+                <View style={styles.activeTop}>
+                  <Package size={16} color={Colors.neutral[0]} />
+                  <Text style={styles.activeEyebrow}>Active order</Text>
+                </View>
+                <Text style={styles.activeName}>{activeOrder.service_name}</Text>
+                <Text style={styles.activeMeta}>
+                  {activeOrder.status === 'in_progress'
+                    ? 'In Progress'
+                    : activeOrder.status.charAt(0).toUpperCase() + activeOrder.status.slice(1)}
+                  {' · '}
+                  {activeOrder.scheduled_date} {activeOrder.scheduled_time}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <View style={styles.card}>
               <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/(tabs)/bookings')}>
                 <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.primary[600]}15` }]}>
                   <CalendarCheck size={18} color={Colors.primary[600]} />
                 </View>
                 <Text style={styles.menuLabel}>My Bookings</Text>
+                <ChevronRight size={18} color={Colors.neutral[300]} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/customer/addresses')}>
+                <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.success[600]}15` }]}>
+                  <MapPin size={18} color={Colors.success[600]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuLabel}>Saved addresses</Text>
+                  <Text style={styles.menuSub}>Home / Office</Text>
+                </View>
+                <ChevronRight size={18} color={Colors.neutral[300]} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/customer/reviews')}>
+                <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.accent[500]}15` }]}>
+                  <Star size={18} color={Colors.accent[600]} />
+                </View>
+                <Text style={styles.menuLabel}>My reviews</Text>
                 <ChevronRight size={18} color={Colors.neutral[300]} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/customer/complaints')}>
@@ -176,13 +216,33 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/customer/help')}>
+            <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/customer/offers')}>
+              <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.accent[500]}15` }]}>
+                <BadgePercent size={18} color={Colors.accent[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Offers & coupons</Text>
+                <Text style={styles.menuSub}>Live deals + checkout codes</Text>
+              </View>
+              <ChevronRight size={18} color={Colors.neutral[300]} />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/customer/help')}>
               <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.primary[600]}15` }]}>
                 <HelpCircle size={18} color={Colors.primary[600]} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.menuLabel}>Help, safety & helpline</Text>
                 <Text style={styles.menuSub}>Booking, payment, warranty</Text>
+              </View>
+              <ChevronRight size={18} color={Colors.neutral[300]} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/customer/settings')}>
+              <View style={[styles.menuIconWrap, { backgroundColor: Colors.neutral[100] }]}>
+                <Settings size={18} color={Colors.neutral[700]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Settings</Text>
+                <Text style={styles.menuSub}>City</Text>
               </View>
               <ChevronRight size={18} color={Colors.neutral[300]} />
             </TouchableOpacity>
@@ -298,6 +358,16 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, height: 36, backgroundColor: Colors.neutral[200] },
   section: { marginTop: Spacing.lg, paddingHorizontal: Spacing.lg },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.neutral[700], marginBottom: Spacing.sm },
+  activeCard: {
+    backgroundColor: Colors.neutral[800],
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  activeTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  activeEyebrow: { color: Colors.neutral[0], fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  activeName: { color: Colors.neutral[0], fontSize: 16, fontWeight: '800' },
+  activeMeta: { color: Colors.neutral[300], marginTop: 4, fontSize: 12 },
   card: {
     backgroundColor: Colors.neutral[0],
     borderRadius: Radius.lg,

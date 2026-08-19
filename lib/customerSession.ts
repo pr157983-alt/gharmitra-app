@@ -64,6 +64,10 @@ export function writeSavedAddresses(list: SavedAddress[]) {
   storage()?.setItem(ADDR_KEY, JSON.stringify(list.slice(0, 8)));
 }
 
+export function deleteSavedAddress(id: string) {
+  writeSavedAddresses(readSavedAddresses().filter((a) => a.id !== id));
+}
+
 export function upsertSavedAddress(addr: Omit<SavedAddress, 'id'> & { id?: string }): SavedAddress {
   const list = readSavedAddresses();
   const same = list.find(
