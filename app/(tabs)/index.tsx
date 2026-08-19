@@ -13,7 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight, Package } from 'lucide-react-native';
+import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service, Booking, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, parseService } from '@/lib/catalogMeta';
@@ -47,7 +47,6 @@ export default function HomeScreen() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [promoOffers, setPromoOffers] = useState<PromoOffer[]>([]);
   const [recentBooking, setRecentBooking] = useState<Booking | null>(null);
-  const [activeOrder, setActiveOrder] = useState<Booking | null>(null);
   const [city, setCity] = useState('');
   const [editingCity, setEditingCity] = useState(false);
   const [cityDraft, setCityDraft] = useState('');
@@ -93,7 +92,6 @@ export default function HomeScreen() {
         const { data } = await q;
         const list = (Array.isArray(data) ? data : data ? [data] : []) as Booking[];
         setRecentBooking(list[0] || null);
-        setActiveOrder(list.find((x) => ['pending', 'confirmed', 'in_progress'].includes(x.status)) || null);
         const row = list[0];
         if (!session.city && row?.address) {
           const parts = String(row.address).split(',').map((p) => p.trim()).filter(Boolean);
@@ -105,7 +103,6 @@ export default function HomeScreen() {
         }
       } else {
         setRecentBooking(null);
-        setActiveOrder(null);
       }
     } catch {
       // network error — show empty state
@@ -262,30 +259,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-        </View>
-
-        <View style={styles.activeSlot}>
-          {activeOrder ? (
-            <TouchableOpacity style={styles.activeCard} onPress={() => router.push(`/booking/${activeOrder.id}`)} activeOpacity={0.85}>
-              <View style={styles.activeTop}>
-                <Package size={16} color={Colors.neutral[0]} />
-                <Text style={styles.activeEyebrow}>Active order</Text>
-              </View>
-              <Text style={styles.activeName}>{activeOrder.service_name}</Text>
-              <Text style={styles.activeMeta}>
-                {activeOrder.status === 'in_progress'
-                  ? 'In Progress'
-                  : activeOrder.status.charAt(0).toUpperCase() + activeOrder.status.slice(1)}
-                {' · '}
-                {activeOrder.scheduled_date} {activeOrder.scheduled_time}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.activeEmpty} onPress={() => router.push('/(tabs)/services')} activeOpacity={0.85}>
-              <Text style={styles.activeEmptyTitle}>No active order</Text>
-              <Text style={styles.activeEmptySub}>Service book karke yahan live status dikhega</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         <View style={styles.bannerContainer}>
@@ -635,33 +608,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-  activeSlot: {
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-    minHeight: 88,
-  },
-  activeCard: {
-    backgroundColor: Colors.neutral[800],
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    minHeight: 88,
-    justifyContent: 'center',
-  },
-  activeTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  activeEyebrow: { color: Colors.neutral[0], fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
-  activeName: { color: Colors.neutral[0], fontSize: 16, fontWeight: '800' },
-  activeMeta: { color: Colors.neutral[300], marginTop: 4, fontSize: 12 },
-  activeEmpty: {
-    minHeight: 88,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    backgroundColor: Colors.neutral[0],
-    padding: Spacing.md,
-    justifyContent: 'center',
-  },
-  activeEmptyTitle: { fontWeight: '800', color: Colors.neutral[800], fontSize: 15 },
-  activeEmptySub: { color: Colors.neutral[500], marginTop: 4, fontSize: 12 },
   searchPlaceholder: {
     marginLeft: Spacing.sm,
     fontSize: 14,

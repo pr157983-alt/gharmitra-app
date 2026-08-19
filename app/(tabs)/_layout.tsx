@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Grid3x3, CalendarCheck, User } from 'lucide-react-native';
+import { Home, Grid3x3, CalendarCheck, Package, User } from 'lucide-react-native';
 import { Colors } from '@/lib/theme';
 
 export default function TabLayout() {
@@ -18,7 +18,7 @@ export default function TabLayout() {
           paddingTop: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
           marginTop: 2,
         },
@@ -43,6 +43,13 @@ export default function TabLayout() {
         options={{
           title: 'Bookings',
           tabBarIcon: ({ size, color }) => <CalendarCheck size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="active"
+        options={{
+          title: 'Active',
+          tabBarIcon: ({ size, color }) => <Package size={size} color={color} />,
         }}
       />
       <Tabs.Screen
