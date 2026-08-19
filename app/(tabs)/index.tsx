@@ -325,6 +325,31 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {/* Categories */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>All Services</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/services')}>
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.categoriesGrid}>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryCard}
+                onPress={() => router.push(`/service?category=${cat.id}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.categoryImageWrap}>
+                  <CatalogImage name={cat.name} imageUrl={cat.image_url} style={styles.categoryImage} />
+                </View>
+                <Text style={styles.categoryName} numberOfLines={2}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {dealCards.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -368,31 +393,6 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         ) : null}
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>All Services</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/services')}>
-              <Text style={styles.seeAll}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.categoriesGrid}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={styles.categoryCard}
-                onPress={() => router.push(`/service?category=${cat.id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.categoryImageWrap}>
-                  <CatalogImage name={cat.name} imageUrl={cat.image_url} style={styles.categoryImage} />
-                </View>
-                <Text style={styles.categoryName} numberOfLines={2}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
 
         {/* Popular Services */}
         <View style={styles.section}>
