@@ -30,6 +30,8 @@ export type JobMeta = {
   surge_extra?: number;
   coupon_code?: string;
   coupon_discount?: number;
+  customer_rating?: number;
+  customer_review?: string;
 };
 
 const START = '__GM__';
