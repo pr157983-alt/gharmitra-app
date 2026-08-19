@@ -15,8 +15,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Star, Check, Clock, ChevronRight, Calendar } from 'lucide-react-native';
 import { supabase, Service, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { addonSum, isServiceEnabled, parseService, pricingLabel, serviceBanners } from '@/lib/catalogMeta';
+import { addonSum, isServiceEnabled, parseService, serviceBanners } from '@/lib/catalogMeta';
 import { CatalogImage } from '@/components/CatalogImage';
+import { PriceTag } from '@/components/PriceTag';
+import { DealCountdown } from '@/components/DealCountdown';
+import { comboPricing, isCombo } from '@/lib/deals';
 
 export default function ServiceDetailScreen() {
   const { id, category } = useLocalSearchParams<{ id: string; category?: string }>();
@@ -26,6 +29,7 @@ export default function ServiceDetailScreen() {
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalog, setCatalog] = useState<Service[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -50,6 +54,11 @@ export default function ServiceDetailScreen() {
         ]);
         if (svcRes.data && isServiceEnabled(svcRes.data)) setSelectedService(svcRes.data);
         if (pkgRes.data) setPackages(pkgRes.data);
+        const bundleIds = svcRes.data ? parseService(svcRes.data).meta.bundle_service_ids || [] : [];
+        if (bundleIds.length) {
+          const extra = await supabase.from('services').select('*').in('id', bundleIds);
+          setCatalog(extra.data || []);
+        }
       }
     } catch {
       // network error
@@ -142,11 +151,24 @@ export default function ServiceDetailScreen() {
               <Text style={styles.reviewsText}>Est. {parseService(selectedService).meta.estimated_time}</Text>
             </View>
           )}
-          <Text style={[styles.reviewsText, { marginTop: 8 }]}>{pricingLabel(selectedService)}</Text>
-          {parseService(selectedService).meta.is_bundle && (
-            <Text style={[styles.serviceDesc, { marginTop: 8, fontWeight: '700' }]}>
-              Combo includes: {parseService(selectedService).description || (parseService(selectedService).meta.bundle_service_ids || []).length + ' services'}
-            </Text>
+          {isCombo(selectedService) ? (
+            <>
+              <View style={styles.dealRow}>
+                <Text style={styles.dealLabel}>Limited time combo</Text>
+                <DealCountdown compact />
+              </View>
+              <PriceTag
+                sale={comboPricing(selectedService, catalog).sale || selectedService.starting_price}
+                mrp={comboPricing(selectedService, catalog).mrp}
+                off={comboPricing(selectedService, catalog).off}
+              />
+              <Text style={[styles.serviceDesc, { marginTop: 8, fontWeight: '700' }]}>
+                Combo includes:{' '}
+                {comboPricing(selectedService, catalog).names.join(' + ') || parseService(selectedService).description}
+              </Text>
+            </>
+          ) : (
+            <PriceTag sale={selectedService.starting_price} suffix=" onwards" />
           )}
         </View>
 
@@ -211,7 +233,15 @@ export default function ServiceDetailScreen() {
                       <Text style={styles.packageDuration}>{pkg.duration}</Text>
                     </View>
                   </View>
-                  <Text style={styles.packagePrice}>₹{pkg.price}</Text>
+                  {isCombo(selectedService) && comboPricing(selectedService, catalog).mrp > Number(pkg.price) ? (
+                    <PriceTag
+                      sale={Number(pkg.price)}
+                      mrp={comboPricing(selectedService, catalog).mrp}
+                      off={comboPricing(selectedService, catalog).off}
+                    />
+                  ) : (
+                    <Text style={styles.packagePrice}>₹{pkg.price}</Text>
+                  )}
                 </View>
                 <Text style={styles.packageDesc}>{pkg.description}</Text>
                 <View style={styles.includesList}>
@@ -408,6 +438,19 @@ const styles = StyleSheet.create({
     color: Colors.neutral[600],
     marginTop: Spacing.sm,
     lineHeight: 22,
+  },
+  dealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  dealLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.error[600],
+    textTransform: 'uppercase',
   },
   section: {
     backgroundColor: Colors.neutral[0],

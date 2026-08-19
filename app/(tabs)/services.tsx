@@ -14,8 +14,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Search, Star } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { enabledServices, isCategoryEnabled, parseService, pricingLabel, categoryParentId } from '@/lib/catalogMeta';
+import { enabledServices, isCategoryEnabled, parseService, categoryParentId } from '@/lib/catalogMeta';
 import { CatalogImage } from '@/components/CatalogImage';
+import { PriceTag } from '@/components/PriceTag';
+import { comboPricing, couponOnPrice, isCombo } from '@/lib/deals';
+import { loadCoupons } from '@/lib/offers';
+import type { Coupon } from '@/lib/catalogMeta';
 
 export default function ServicesScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -25,6 +29,7 @@ export default function ServicesScreen() {
   const { q } = useLocalSearchParams<{ q?: string }>();
   const [search, setSearch] = useState(q ? String(q) : '');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [coupon, setCoupon] = useState<Coupon | null>(null);
 
   useEffect(() => {
     if (q) setSearch(String(q));
@@ -38,6 +43,8 @@ export default function ServicesScreen() {
       ]);
       if (catRes.data) setCategories(catRes.data.filter(isCategoryEnabled));
       if (svcRes.data) setServices(enabledServices(svcRes.data));
+      const list = await loadCoupons();
+      setCoupon(list.find((c) => c.enabled !== false) || null);
     } catch {
       // network error
     }
@@ -148,8 +155,16 @@ export default function ServicesScreen() {
                       <Text style={styles.ratingPillText}>{svc.rating}</Text>
                     </View>
                     <Text style={styles.reviewsText}>{svc.reviews_count} reviews</Text>
+                    {isCombo(svc) ? <Text style={styles.comboChip}>Combo</Text> : null}
                   </View>
-                  <Text style={styles.servicePrice}>{pricingLabel(svc)}</Text>
+                  {(() => {
+                    if (isCombo(svc)) {
+                      const p = comboPricing(svc, services);
+                      return <PriceTag sale={p.sale} mrp={p.mrp} off={p.off} />;
+                    }
+                    const p = couponOnPrice(svc.starting_price, coupon);
+                    return <PriceTag sale={p.sale} mrp={p.mrp} off={p.off} suffix=" onwards" />;
+                  })()}
                 </View>
               </TouchableOpacity>
             );
@@ -302,6 +317,16 @@ const styles = StyleSheet.create({
   reviewsText: {
     fontSize: 12,
     color: Colors.neutral[400],
+  },
+  comboChip: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.neutral[0],
+    backgroundColor: Colors.neutral[800],
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   servicePrice: {
     fontSize: 14,

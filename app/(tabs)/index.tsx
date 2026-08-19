@@ -14,13 +14,16 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight } from 'lucide-react-native';
-import { supabase, ServiceCategory, Service, Booking } from '@/lib/supabase';
+import { supabase, ServiceCategory, Service, Booking, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
+import { topLevelCategories, enabledServices, parseService } from '@/lib/catalogMeta';
 import { CatalogImage } from '@/components/CatalogImage';
+import { DealCountdown } from '@/components/DealCountdown';
+import { PriceTag } from '@/components/PriceTag';
 import { loadCoupons } from '@/lib/offers';
 import type { Coupon } from '@/lib/catalogMeta';
 import { readCustomerSession, setCustomerCity } from '@/lib/customerSession';
+import { comboPricing, couponOnPrice, isCombo } from '@/lib/deals';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +43,7 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [popularServices, setPopularServices] = useState<Service[]>([]);
   const [allServices, setAllServices] = useState<Service[]>([]);
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [recentBooking, setRecentBooking] = useState<Booking | null>(null);
   const [city, setCity] = useState('');
@@ -65,14 +69,16 @@ export default function HomeScreen() {
     const session = readCustomerSession();
     if (session.city) setCity(session.city);
     try {
-      const [catRes, svcRes, popRes] = await Promise.all([
+      const [catRes, svcRes, popRes, pkgRes] = await Promise.all([
         supabase.from('service_categories').select('*').order('sort_order'),
         supabase.from('services').select('*').order('is_popular', { ascending: false }),
         supabase.from('services').select('*').eq('is_popular', true).order('rating', { ascending: false }),
+        supabase.from('service_packages').select('*').order('price'),
       ]);
       if (catRes.data) setCategories(topLevelCategories(catRes.data));
       if (svcRes.data) setAllServices(enabledServices(svcRes.data));
       if (popRes.data) setPopularServices(enabledServices(popRes.data));
+      if (pkgRes.data) setPackages(pkgRes.data);
       setCoupons((await loadCoupons()).filter((c) => c.enabled !== false));
       if (session.id || session.phone) {
         let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(1);
@@ -117,7 +123,29 @@ export default function HomeScreen() {
     return allServices.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6);
   }, [search, allServices]);
 
-  const featuredCoupon = coupons[0];
+  const featuredCoupon = coupons[0] || null;
+  const combos = useMemo(() => allServices.filter(isCombo), [allServices]);
+  const dealCards = useMemo(() => {
+    const fromCombos = combos
+      .map((svc) => {
+        const p = comboPricing(svc, allServices);
+        return { kind: 'combo' as const, svc, ...p };
+      })
+      .filter((d) => d.off > 0 || d.sale > 0);
+    if (fromCombos.length) return fromCombos.slice(0, 8);
+    return popularServices.slice(0, 6).map((svc) => {
+      const p = couponOnPrice(svc.starting_price, featuredCoupon);
+      return { kind: 'service' as const, svc, ...p };
+    });
+  }, [combos, allServices, popularServices, featuredCoupon]);
+  const packageCards = useMemo(() => {
+    const rec = packages.filter((p) => p.is_recommended);
+    const list = (rec.length ? rec : packages).slice(0, 8);
+    return list.map((pkg) => ({
+      pkg,
+      svc: allServices.find((s) => s.id === pkg.service_id) || null,
+    })).filter((x) => x.svc);
+  }, [packages, allServices]);
 
   useEffect(() => {
     if (banners.length === 0) return;
@@ -267,6 +295,50 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {dealCards.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Limited time deals</Text>
+                <Text style={styles.sectionHint}>Aaj raat 11:59 tak</Text>
+              </View>
+              <DealCountdown compact />
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.popularScroll}
+            >
+              {dealCards.map((d) => (
+                <TouchableOpacity
+                  key={`${d.kind}-${d.svc.id}`}
+                  style={styles.dealCard}
+                  onPress={() => router.push(`/service/${d.svc.id}`)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.dealImgWrap}>
+                    <CatalogImage name={d.svc.name} imageUrl={d.svc.image_url} style={styles.dealImg} />
+                    {d.off > 0 ? (
+                      <View style={styles.dealOffTag}>
+                        <Text style={styles.dealOffText}>{d.off}% OFF</Text>
+                      </View>
+                    ) : featuredCoupon ? (
+                      <View style={styles.dealOffTag}>
+                        <Text style={styles.dealOffText}>{featuredCoupon.code}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.popularInfo}>
+                    <Text style={styles.dealKind}>{d.kind === 'combo' ? 'Combo deal' : 'Today only'}</Text>
+                    <Text style={styles.popularName} numberOfLines={1}>{d.svc.name}</Text>
+                    <PriceTag sale={d.sale} mrp={d.mrp} off={d.off} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {/* Categories */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -317,12 +389,81 @@ export default function HomeScreen() {
                     <Text style={styles.ratingText}>{svc.rating}</Text>
                     <Text style={styles.reviewsText}> ({svc.reviews_count})</Text>
                   </View>
-                  <Text style={styles.popularPrice}>{pricingLabel(svc)}</Text>
+                  {(() => {
+                    if (isCombo(svc)) {
+                      const p = comboPricing(svc, allServices);
+                      return <PriceTag sale={p.sale} mrp={p.mrp} off={p.off} />;
+                    }
+                    const p = couponOnPrice(svc.starting_price, featuredCoupon);
+                    return <PriceTag sale={p.sale} mrp={p.mrp} off={p.off} />;
+                  })()}
                 </View>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
+
+        {combos.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Combo offers</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/services')}>
+                <Text style={styles.seeAll}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {combos.map((svc) => {
+              const p = comboPricing(svc, allServices);
+              return (
+                <TouchableOpacity
+                  key={svc.id}
+                  style={styles.comboCard}
+                  onPress={() => router.push(`/service/${svc.id}`)}
+                  activeOpacity={0.85}
+                >
+                  <CatalogImage name={svc.name} imageUrl={svc.image_url} style={styles.comboImg} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.comboBadge}><Text style={styles.comboBadgeText}>PACKAGE / COMBO</Text></View>
+                    <Text style={styles.comboName}>{svc.name}</Text>
+                    <Text style={styles.comboParts} numberOfLines={2}>
+                      {p.names.length ? p.names.join(' + ') : parseService(svc).description}
+                    </Text>
+                    <PriceTag sale={p.sale} mrp={p.mrp} off={p.off} />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {packageCards.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Packages</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.popularScroll}
+            >
+              {packageCards.map(({ pkg, svc }) => (
+                <TouchableOpacity
+                  key={pkg.id}
+                  style={styles.pkgCard}
+                  onPress={() => router.push(`/service/${svc!.id}`)}
+                  activeOpacity={0.85}
+                >
+                  {pkg.is_recommended ? (
+                    <View style={styles.recTag}><Text style={styles.recTagText}>Recommended</Text></View>
+                  ) : null}
+                  <Text style={styles.pkgService} numberOfLines={1}>{svc!.name}</Text>
+                  <Text style={styles.pkgName} numberOfLines={2}>{pkg.name}</Text>
+                  <Text style={styles.pkgDur}>{pkg.duration}</Text>
+                  <PriceTag sale={Number(pkg.price || 0)} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {featuredCoupon ? (
           <TouchableOpacity
@@ -372,7 +513,7 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <View style={{ height: Spacing.xl }} />
+        <View style={{ height: Spacing.xxl + 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -636,6 +777,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.neutral[900],
   },
+  sectionHint: {
+    fontSize: 12,
+    color: Colors.neutral[500],
+    marginTop: 2,
+  },
   seeAll: {
     fontSize: 13,
     fontWeight: '600',
@@ -715,6 +861,69 @@ const styles = StyleSheet.create({
     color: Colors.primary[700],
     marginTop: 4,
   },
+  dealCard: {
+    width: 210,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+  },
+  dealImgWrap: { position: 'relative' },
+  dealImg: { width: '100%', height: 118, resizeMode: 'cover' },
+  dealOffTag: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: Colors.error[600],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  dealOffText: { color: Colors.neutral[0], fontSize: 11, fontWeight: '800' },
+  dealKind: { fontSize: 11, fontWeight: '700', color: Colors.accent[600], textTransform: 'uppercase' },
+  comboCard: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    marginBottom: 10,
+  },
+  comboImg: { width: 88, height: 88, borderRadius: Radius.md },
+  comboBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.neutral[900],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  comboBadgeText: { color: Colors.neutral[0], fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  comboName: { fontSize: 15, fontWeight: '800', color: Colors.neutral[900] },
+  comboParts: { fontSize: 12, color: Colors.neutral[500], marginTop: 4, lineHeight: 16 },
+  pkgCard: {
+    width: 180,
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Radius.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+  },
+  recTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accent[100],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  recTagText: { fontSize: 10, fontWeight: '800', color: Colors.accent[700] },
+  pkgService: { fontSize: 11, color: Colors.neutral[500], fontWeight: '600' },
+  pkgName: { fontSize: 15, fontWeight: '800', color: Colors.neutral[900], marginTop: 4, minHeight: 40 },
+  pkgDur: { fontSize: 12, color: Colors.neutral[500], marginTop: 4 },
   offerBanner: {
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.lg,
