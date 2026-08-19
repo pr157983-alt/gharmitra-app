@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
@@ -14,6 +13,7 @@ import { ArrowLeft, Star, ChevronRight } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { childCategories, enabledServices, parseService, pricingLabel } from '@/lib/catalogMeta';
+import { CatalogImage } from '@/components/CatalogImage';
 
 export default function CategoryServicesScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
@@ -77,7 +77,8 @@ export default function CategoryServicesScreen() {
                 onPress={() => router.push(`/service?category=${sub.id}`)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.serviceName}>{sub.name}</Text>
+                <CatalogImage name={sub.name} imageUrl={sub.image_url} style={styles.subThumb} />
+                <Text style={[styles.serviceName, { flex: 1 }]}>{sub.name}</Text>
                 <ChevronRight size={18} color={Colors.neutral[300]} />
               </TouchableOpacity>
             ))}
@@ -95,7 +96,7 @@ export default function CategoryServicesScreen() {
               onPress={() => router.push(`/service/${svc.id}`)}
               activeOpacity={0.8}
             >
-              <Image source={{ uri: svc.image_url || '' }} style={styles.serviceImage} />
+                <CatalogImage name={svc.name} imageUrl={svc.image_url} style={styles.serviceImage} />
               <View style={styles.serviceInfo}>
                 <Text style={styles.serviceName}>{svc.name}</Text>
                 <Text style={styles.serviceDesc} numberOfLines={2}>{parseService(svc).description}</Text>
@@ -167,6 +168,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.neutral[200],
     marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  subThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.neutral[100],
   },
   listContainer: {
     paddingHorizontal: Spacing.lg,

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   SafeAreaView,
   Alert,
@@ -17,6 +16,7 @@ import { ArrowLeft, Star, Check, Clock, ChevronRight, Calendar } from 'lucide-re
 import { supabase, Service, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { addonSum, isServiceEnabled, parseService, pricingLabel, serviceBanners } from '@/lib/catalogMeta';
+import { CatalogImage } from '@/components/CatalogImage';
 
 export default function ServiceDetailScreen() {
   const { id, category } = useLocalSearchParams<{ id: string; category?: string }>();
@@ -107,7 +107,7 @@ export default function ServiceDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header image */}
         <View style={styles.heroWrap}>
-          <Image source={{ uri: selectedService.image_url || '' }} style={styles.heroImage} />
+          <CatalogImage name={selectedService.name} imageUrl={selectedService.image_url} style={styles.heroImage} />
           <View style={styles.heroOverlay} />
           <TouchableOpacity
             style={styles.backButton}
@@ -120,7 +120,7 @@ export default function ServiceDetailScreen() {
         {serviceBanners(selectedService).length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bannerRow}>
             {serviceBanners(selectedService).slice(1).map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.extraBanner} />
+              <CatalogImage key={uri} name={selectedService.name} imageUrl={uri} style={styles.extraBanner} />
             ))}
           </ScrollView>
         )}

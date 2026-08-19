@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,28 +16,15 @@ import { Star, ChevronRight, Search, ShieldCheck, Clock, BadgePercent, Shield } 
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
+import { CatalogImage } from '@/components/CatalogImage';
+import { catalogPhoto, fallbackPhotoForName } from '@/lib/catalogPhotos';
 
 const { width } = Dimensions.get('window');
 
-const banners = [
-  {
-    title: 'AC Servicing',
-    subtitle: 'Sirf ₹299 se shuru',
-    color: '#1189f5',
-    image: 'https://images.pexels.com/photos/7680637/pexels-photo-7680637.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-  {
-    title: 'Ghar Ki Safai',
-    subtitle: 'Deep clean sirf ₹499',
-    color: '#10b981',
-    image: 'https://images.pexels.com/photos/6195122/pexels-photo-6195122.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-  {
-    title: 'Bijli Kaam',
-    subtitle: 'Electrician ₹199 se',
-    color: '#f59e0b',
-    image: 'https://images.pexels.com/photos/8472881/pexels-photo-8472881.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
+const DEFAULT_BANNERS = [
+  { title: 'AC Servicing', subtitle: 'Cooling theek, ghar aaram', color: '#1189f5', name: 'AC Repair' },
+  { title: 'Air Cooler', subtitle: 'Cooler service & repair', color: '#0ea5e9', name: 'Cooler Repair' },
+  { title: 'Fridge & Washing', subtitle: 'Ghar ke appliances', color: '#10b981', name: 'Fridge Repair' },
 ];
 
 export default function HomeScreen() {
@@ -46,6 +33,18 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bannerIndex, setBannerIndex] = useState(0);
+  const banners = useMemo(() => {
+    if (categories.length > 0) {
+      return categories.slice(0, 4).map((cat, i) => ({
+        title: cat.name,
+        subtitle: 'Book verified professionals',
+        color: ['#1189f5', '#0ea5e9', '#10b981', '#f59e0b'][i % 4],
+        name: cat.name,
+        image: catalogPhoto(cat.name, cat.image_url),
+      }));
+    }
+    return DEFAULT_BANNERS.map((b) => ({ ...b, image: fallbackPhotoForName(b.name) }));
+  }, [categories]);
 
   const loadData = useCallback(async () => {
     try {
@@ -65,11 +64,16 @@ export default function HomeScreen() {
   useEffect(() => {
     loadData();
     const timeout = setTimeout(() => setLoading(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (banners.length === 0) return;
     const interval = setInterval(() => {
       setBannerIndex((prev) => (prev + 1) % banners.length);
     }, 3500);
-    return () => { clearInterval(interval); clearTimeout(timeout); };
-  }, [loadData]);
+    return () => clearInterval(interval);
+  }, [banners.length]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -124,7 +128,7 @@ export default function HomeScreen() {
                 { opacity: i === bannerIndex ? 1 : 0, zIndex: i === bannerIndex ? 1 : 0 },
               ]}
             >
-              <Image source={{ uri: banner.image }} style={styles.bannerImage} />
+              <CatalogImage name={banner.name} imageUrl={banner.image} style={styles.bannerImage} />
               <View style={[styles.bannerOverlay, { backgroundColor: `${banner.color}cc` }]}>
                 <Text style={styles.bannerTitle}>{banner.title}</Text>
                 <Text style={styles.bannerSubtitle}>{banner.subtitle}</Text>
@@ -174,9 +178,7 @@ export default function HomeScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.categoryImageWrap}>
-                  {cat.image_url && (
-                    <Image source={{ uri: cat.image_url }} style={styles.categoryImage} />
-                  )}
+                  <CatalogImage name={cat.name} imageUrl={cat.image_url} style={styles.categoryImage} />
                 </View>
                 <Text style={styles.categoryName} numberOfLines={2}>{cat.name}</Text>
               </TouchableOpacity>
@@ -201,10 +203,7 @@ export default function HomeScreen() {
                 onPress={() => router.push(`/service/${svc.id}`)}
                 activeOpacity={0.8}
               >
-                <Image
-                  source={{ uri: svc.image_url || '' }}
-                  style={styles.popularImage}
-                />
+                <CatalogImage name={svc.name} imageUrl={svc.image_url} style={styles.popularImage} />
                 <View style={styles.popularInfo}>
                   <Text style={styles.popularName} numberOfLines={1}>{svc.name}</Text>
                   <View style={styles.ratingRow}>

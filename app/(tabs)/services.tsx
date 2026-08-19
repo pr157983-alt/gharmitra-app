@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   RefreshControl,
   SafeAreaView,
@@ -16,6 +15,7 @@ import { Search, Star } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { enabledServices, isCategoryEnabled, parseService, pricingLabel, categoryParentId } from '@/lib/catalogMeta';
+import { CatalogImage } from '@/components/CatalogImage';
 
 export default function ServicesScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -132,7 +132,7 @@ export default function ServicesScreen() {
                 onPress={() => router.push(`/service/${svc.id}`)}
                 activeOpacity={0.8}
               >
-                <Image source={{ uri: svc.image_url || '' }} style={styles.serviceImage} />
+                <CatalogImage name={svc.name} imageUrl={svc.image_url} style={styles.serviceImage} />
                 <View style={styles.serviceInfo}>
                   {cat && <Text style={styles.serviceCategory}>{cat.name}</Text>}
                   <Text style={styles.serviceName}>{svc.name}</Text>
