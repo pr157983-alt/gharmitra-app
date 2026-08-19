@@ -13,7 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Star, Search, ShieldCheck, Clock, BadgePercent, MapPin, Bell, ChevronRight } from 'lucide-react-native';
+import { Star, Search, MapPin, Bell, ChevronRight } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service, Booking, ServicePackage } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, parseService } from '@/lib/catalogMeta';
@@ -176,10 +176,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+      <View style={styles.stickyTop}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Image source={require('@/assets/images/icon.png')} style={styles.headerLogo} />
@@ -260,7 +257,13 @@ export default function HomeScreen() {
           </View>
         ) : null}
         </View>
+      </View>
 
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={styles.bannerContainer}>
           {banners.map((banner, i) => (
             <View
@@ -284,22 +287,6 @@ export default function HomeScreen() {
                 style={[styles.bannerDot, i === bannerIndex && styles.bannerDotActive]}
               />
             ))}
-          </View>
-        </View>
-
-        {/* Trust badges */}
-        <View style={styles.trustRow}>
-          <View style={styles.trustItem}>
-            <ShieldCheck size={20} color={Colors.primary[600]} />
-            <Text style={styles.trustText}>Verified Pros</Text>
-          </View>
-          <View style={styles.trustItem}>
-            <Clock size={20} color={Colors.primary[600]} />
-            <Text style={styles.trustText}>On-Time</Text>
-          </View>
-          <View style={styles.trustItem}>
-            <BadgePercent size={20} color={Colors.primary[600]} />
-            <Text style={styles.trustText}>Best Prices</Text>
           </View>
         </View>
 
@@ -535,6 +522,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.neutral[50],
+  },
+  stickyTop: {
+    backgroundColor: Colors.neutral[50],
+    zIndex: 40,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral[200],
   },
   header: {
     flexDirection: 'row',

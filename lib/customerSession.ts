@@ -91,3 +91,33 @@ export function upsertSavedAddress(addr: Omit<SavedAddress, 'id'> & { id?: strin
   if (next.city) setCustomerCity(next.city);
   return next;
 }
+
+export type WalletTx = { id: string; amount: number; note: string; at: string };
+
+const WALLET_BAL = 'customer_wallet_bal';
+const WALLET_TX = 'customer_wallet_tx';
+
+export function readWalletBalance() {
+  const n = Number(storage()?.getItem(WALLET_BAL) || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function readWalletTx(): WalletTx[] {
+  try {
+    const raw = storage()?.getItem(WALLET_TX);
+    const list = raw ? (JSON.parse(raw) as WalletTx[]) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addWalletMoney(amount: number, note: string) {
+  const n = Math.max(0, Number(amount) || 0);
+  if (n <= 0) return readWalletBalance();
+  const bal = readWalletBalance() + n;
+  storage()?.setItem(WALLET_BAL, String(bal));
+  const tx: WalletTx = { id: `w_${Date.now()}`, amount: n, note, at: new Date().toISOString() };
+  storage()?.setItem(WALLET_TX, JSON.stringify([tx, ...readWalletTx()].slice(0, 40)));
+  return bal;
+}

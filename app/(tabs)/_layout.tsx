@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Grid3x3, CalendarCheck, Package, User } from 'lucide-react-native';
+import { Home, CalendarCheck, Package, User } from 'lucide-react-native';
 import { Colors } from '@/lib/theme';
 
 export default function TabLayout() {
@@ -34,8 +34,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="services"
         options={{
-          title: 'Services',
-          tabBarIcon: ({ size, color }) => <Grid3x3 size={size} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen

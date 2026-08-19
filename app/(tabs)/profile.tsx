@@ -16,6 +16,7 @@ import {
   BadgePercent,
   Star,
   Settings,
+  Wallet,
 } from 'lucide-react-native';
 import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
@@ -148,6 +149,16 @@ export default function ProfileScreen() {
                   <Star size={18} color={Colors.accent[600]} />
                 </View>
                 <Text style={styles.menuLabel}>My reviews</Text>
+                <ChevronRight size={18} color={Colors.neutral[300]} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.menuRow, styles.menuBorder]} onPress={() => router.push('/customer/wallet')}>
+                <View style={[styles.menuIconWrap, { backgroundColor: `${Colors.success[600]}15` }]}>
+                  <Wallet size={18} color={Colors.success[600]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuLabel}>Wallet</Text>
+                  <Text style={styles.menuSub}>Balance & add money</Text>
+                </View>
                 <ChevronRight size={18} color={Colors.neutral[300]} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/customer/complaints')}>
