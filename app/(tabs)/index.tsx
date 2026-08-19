@@ -12,7 +12,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Star, ChevronRight, Search, ShieldCheck, Clock, BadgePercent, Shield } from 'lucide-react-native';
+import { Star, ChevronRight, Search, ShieldCheck, Clock, BadgePercent } from 'lucide-react-native';
 import { supabase, ServiceCategory, Service } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { topLevelCategories, enabledServices, pricingLabel } from '@/lib/catalogMeta';
@@ -102,7 +102,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.locationBadge}>
-            <Text style={styles.locationText}>Bihar</Text>
+            <Text style={styles.locationText}>Home</Text>
           </View>
         </View>
 
@@ -217,24 +217,11 @@ export default function HomeScreen() {
         </View>
 
         {/* Offer banner */}
-        <View style={styles.offerBanner}>
+        <TouchableOpacity style={styles.offerBanner} onPress={() => router.push('/(tabs)/services')} activeOpacity={0.85}>
           <View>
-            <Text style={styles.offerTitle}>Pehli Booking Offer</Text>
-            <Text style={styles.offerSubtitle}>Pehli service par flat ₹100 ki chhoot</Text>
+            <Text style={styles.offerTitle}>Promo code booking pe lagao</Text>
+            <Text style={styles.offerSubtitle}>Admin wale coupon (jaise SAVE50) checkout pe apply honge</Text>
           </View>
-          <View style={styles.offerBadge}>
-            <Text style={styles.offerBadgeText}>₹100 OFF</Text>
-          </View>
-        </View>
-
-        {/* Admin Portal Access */}
-        <TouchableOpacity
-          style={styles.adminLink}
-          onPress={() => router.push('/admin/login')}
-          activeOpacity={0.7}
-        >
-          <Shield size={16} color={Colors.neutral[400]} />
-          <Text style={styles.adminLinkText}>Admin Portal</Text>
         </TouchableOpacity>
 
         <View style={{ height: Spacing.xl }} />

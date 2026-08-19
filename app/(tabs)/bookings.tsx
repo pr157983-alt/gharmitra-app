@@ -8,12 +8,12 @@ import {
   RefreshControl,
   SafeAreaView,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
-import { router } from 'expo-router';
-import { Calendar, Clock, Phone, ChevronRight, Package, User, LogIn, Navigation } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Calendar, Clock, Phone, ChevronRight, Package, User, LogIn } from 'lucide-react-native';
 import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
+import { readCustomerSession } from '@/lib/customerSession';
 
 const statusColors: Record<string, string> = {
   pending: Colors.warning[500],
@@ -30,33 +30,41 @@ export default function BookingsScreen() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const id = sessionStorage.getItem('customer_id');
-      const name = sessionStorage.getItem('customer_name') || '';
-      setCustomerId(id);
-      setCustomerName(name);
-    }
+  const [customerPhone, setCustomerPhone] = useState('');
+
+  const hydrate = useCallback(() => {
+    const s = readCustomerSession();
+    setCustomerId(s.id);
+    setCustomerName(s.name);
+    setCustomerPhone(s.phone);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      hydrate();
+    }, [hydrate])
+  );
+
   const loadBookings = useCallback(async () => {
-    if (!customerId) {
+    if (!customerId && !customerPhone) {
+      setBookings([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     try {
-      const { data } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false });
+      let q = supabase.from('bookings').select('*').order('created_at', { ascending: false });
+      if (customerId && customerPhone) q = q.or(`customer_id.eq.${customerId},phone.eq.${customerPhone}`);
+      else if (customerId) q = q.eq('customer_id', customerId);
+      else q = q.eq('phone', customerPhone);
+      const { data } = await q;
       setBookings(data || []);
     } catch {
       // network error
     }
     setLoading(false);
     setRefreshing(false);
-  }, [customerId]);
+  }, [customerId, customerPhone]);
 
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 8000);
@@ -69,7 +77,7 @@ export default function BookingsScreen() {
     loadBookings();
   }, [loadBookings]);
 
-  if (!customerId) {
+  if (!customerId && !customerPhone) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loginPrompt}>
