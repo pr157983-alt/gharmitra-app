@@ -108,13 +108,17 @@ export function offerDiscountLabel(o: Pick<PromoOffer, 'percent' | 'flat'>) {
 export function findCoupon(coupons: Coupon[], code: string, offers: PromoOffer[] = []) {
   const c = String(code || '').trim().toUpperCase();
   if (!c) return null;
-  const fromCoupon = coupons.find((x) => x.enabled !== false && x.code.trim().toUpperCase() === c);
+  const fromCoupon = (coupons || []).find(
+    (x) => x && x.enabled !== false && String(x.code || '').trim().toUpperCase() === c
+  );
   if (fromCoupon) return fromCoupon;
-  const live = livePromoOffers(offers).find((x) => x.code && x.code.trim().toUpperCase() === c);
+  const live = livePromoOffers(offers || []).find(
+    (x) => x && String(x.code || '').trim().toUpperCase() === c
+  );
   if (!live) return null;
   return {
     id: live.id,
-    code: live.code.trim().toUpperCase(),
+    code: String(live.code || '').trim().toUpperCase(),
     percent: Number(live.percent) || 0,
     flat: Number(live.flat) || 0,
     min_amount: Number(live.min_amount) || 0,

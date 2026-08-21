@@ -23,7 +23,8 @@ export function saveBlacklist(phones: string[]) {
 }
 
 export function isBlacklisted(phone: string, extra: string[] = []) {
-  const n = phone.trim();
+  const n = String(phone || '').trim();
+  if (!n) return false;
   return extra.includes(n) || loadBlacklist().includes(n);
 }
 

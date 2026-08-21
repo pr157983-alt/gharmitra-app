@@ -52,11 +52,14 @@ function getNextDays(count: number) {
 }
 
 export default function NewBookingScreen() {
-  const { service, package: pkgId, addons: addonParam } = useLocalSearchParams<{
+  const { service: serviceParam, package: pkgParam, addons: addonParam } = useLocalSearchParams<{
     service: string;
     package: string;
     addons?: string;
   }>();
+  const service = Array.isArray(serviceParam) ? serviceParam[0] : serviceParam;
+  const pkgId = Array.isArray(pkgParam) ? pkgParam[0] : pkgParam;
+  const addonQuery = Array.isArray(addonParam) ? addonParam[0] : addonParam;
   const [serviceData, setServiceData] = useState<Service | null>(null);
   const [packageData, setPackageData] = useState<ServicePackage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +89,7 @@ export default function NewBookingScreen() {
 
   const selectedAddons = (() => {
     if (!serviceData) return [];
-    const ids = String(addonParam || '')
+    const ids = String(addonQuery || '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -140,10 +143,10 @@ export default function NewBookingScreen() {
       setSavedAddresses(stored);
       if (stored[0]) {
         setSelectedAddressId(stored[0].id);
-        setAddress(stored[0].line);
-        setCity(stored[0].city);
-        setPincode(stored[0].pincode);
-        setAddrLabel(stored[0].label);
+        setAddress(stored[0].line || '');
+        setCity(stored[0].city || '');
+        setPincode(stored[0].pincode || '');
+        setAddrLabel(stored[0].label || 'Home');
       }
       if (s.id) {
         supabase
@@ -225,55 +228,66 @@ export default function NewBookingScreen() {
     }
 
     setSubmitting(true);
-    const customerId = typeof window !== 'undefined' ? sessionStorage.getItem('customer_id') : null;
-    const { data, error } = await supabase.from('bookings').insert({
-      service_id: serviceData.id,
-      package_id: packageData.id,
-      service_name: serviceData.name,
-      package_name: packageData.name,
-      customer_name: name.trim(),
-      phone: phone.trim(),
-      address: [address.trim(), city.trim(), pincode.trim()].filter(Boolean).join(', '),
-      scheduled_date: selectedDate,
-      scheduled_time: selectedTime,
-      status: 'pending',
-      total_amount: bookingTotal,
-      notes: writeJobMeta(
-        {
-          addons: selectedAddons,
-          service_charge: packageData.price,
-          visiting_fee: visitingFee,
-          city: city.trim(),
-          pincode: pincode.trim(),
-          location_extra: pricing.location_extra,
-          location_label: pricing.location_label,
-          surge_extra: pricing.surge_extra,
-          surge_label: pricing.surge_label,
-          coupon_code: couponDiscount ? applied?.code : '',
-          coupon_discount: couponDiscount,
-        },
-        notes.trim()
-      ),
-      customer_id: customerId || null,
-    }).select().single();
+    try {
+      const customerId = typeof window !== 'undefined' ? sessionStorage.getItem('customer_id') : null;
+      const { data, error } = await supabase.from('bookings').insert({
+        service_id: serviceData.id,
+        package_id: packageData.id,
+        service_name: serviceData.name,
+        package_name: packageData.name,
+        customer_name: name.trim(),
+        phone: phone.trim(),
+        address: [address.trim(), city.trim(), pincode.trim()].filter(Boolean).join(', '),
+        scheduled_date: selectedDate,
+        scheduled_time: selectedTime,
+        status: 'pending',
+        total_amount: bookingTotal,
+        notes: writeJobMeta(
+          {
+            addons: selectedAddons,
+            service_charge: packageData.price,
+            visiting_fee: visitingFee,
+            city: city.trim(),
+            pincode: pincode.trim(),
+            location_extra: pricing.location_extra,
+            location_label: pricing.location_label,
+            surge_extra: pricing.surge_extra,
+            coupon_code: couponDiscount ? applied?.code : '',
+            coupon_discount: couponDiscount,
+          },
+          notes.trim()
+        ),
+        customer_id: customerId || null,
+      }).select().single();
 
-    setSubmitting(false);
+      if (error || !data) {
+        setFormError({
+          title: 'Booking Failed',
+          message: error?.message || 'Server ne booking save nahi ki. Phir try karein.',
+        });
+        return;
+      }
 
-    if (error || !data) {
-      setFormError({ title: 'Booking Failed', message: 'Something went wrong. Please try again.' });
-      return;
+      try {
+        upsertSavedAddress({ label: addrLabel, line: address.trim(), city: city.trim(), pincode: pincode.trim() });
+      } catch {
+        /* address book optional */
+      }
+      setBookedBooking(data as Booking);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Something went wrong. Please try again.';
+      setFormError({ title: 'Booking Failed', message });
+    } finally {
+      setSubmitting(false);
     }
-
-    upsertSavedAddress({ label: addrLabel, line: address.trim(), city: city.trim(), pincode: pincode.trim() });
-    setBookedBooking(data as Booking);
   };
 
   const applySavedAddress = (a: SavedAddress) => {
     setSelectedAddressId(a.id);
-    setAddress(a.line);
-    setCity(a.city);
-    setPincode(a.pincode);
-    setAddrLabel(a.label);
+    setAddress(a.line || '');
+    setCity(a.city || '');
+    setPincode(a.pincode || '');
+    setAddrLabel(a.label || 'Home');
   };
 
   const goNext = () => {
@@ -338,6 +352,18 @@ export default function NewBookingScreen() {
           activeOpacity={0.7}
         >
           <Text style={styles.loginRequiredBackText}>Wapas jayein</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (!serviceData || !packageData) {
+    return (
+      <SafeAreaView style={styles.loginRequiredContainer}>
+        <Text style={styles.loginRequiredTitle}>Service nahi mili</Text>
+        <Text style={styles.loginRequiredText}>Package select karke Book Now dubara dabao.</Text>
+        <TouchableOpacity style={styles.loginRequiredBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <Text style={styles.loginRequiredBtnText}>Wapas jayein</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );

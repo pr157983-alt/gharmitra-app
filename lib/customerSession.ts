@@ -70,11 +70,14 @@ export function deleteSavedAddress(id: string) {
 
 export function upsertSavedAddress(addr: Omit<SavedAddress, 'id'> & { id?: string }): SavedAddress {
   const list = readSavedAddresses();
+  const line = String(addr.line || '').trim();
+  const city = String(addr.city || '').trim();
+  const pincode = String(addr.pincode || '').trim();
   const same = list.find(
     (a) =>
-      a.line.trim().toLowerCase() === addr.line.trim().toLowerCase() &&
-      a.city.trim().toLowerCase() === addr.city.trim().toLowerCase() &&
-      a.pincode.trim() === addr.pincode.trim()
+      String(a.line || '').trim().toLowerCase() === line.toLowerCase() &&
+      String(a.city || '').trim().toLowerCase() === city.toLowerCase() &&
+      String(a.pincode || '').trim() === pincode
   );
   if (same) {
     if (addr.city) setCustomerCity(addr.city);
@@ -83,9 +86,9 @@ export function upsertSavedAddress(addr: Omit<SavedAddress, 'id'> & { id?: strin
   const next: SavedAddress = {
     id: addr.id || `a_${Date.now()}`,
     label: addr.label || (list.length === 0 ? 'Home' : 'Other'),
-    line: addr.line.trim(),
-    city: addr.city.trim(),
-    pincode: addr.pincode.trim(),
+    line,
+    city,
+    pincode,
   };
   writeSavedAddresses([next, ...list]);
   if (next.city) setCustomerCity(next.city);
