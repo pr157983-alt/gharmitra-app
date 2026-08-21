@@ -46,16 +46,68 @@ export async function watchPosition(callback: (coords: GeoCoords) => void): Prom
   return { remove: () => sub.remove() };
 }
 
+export function photoStorageKey(techId: string) {
+  return `tech_photo_${techId}`;
+}
+
+export function readTechPhoto(techId: string | null) {
+  if (!techId) return '';
+  try {
+    return sessionStorage.getItem('tech_photo') || localStorage.getItem(photoStorageKey(techId)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveTechPhoto(techId: string, dataUrl: string) {
+  try {
+    sessionStorage.setItem('tech_photo', dataUrl);
+    localStorage.setItem(photoStorageKey(techId), dataUrl);
+  } catch {
+    try {
+      sessionStorage.setItem('tech_photo', dataUrl);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function pickWebImage(): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  });
+}
+
 export function readTechSession() {
   try {
+    const id = sessionStorage.getItem('tech_id');
     return {
-      id: sessionStorage.getItem('tech_id'),
+      id,
       name: sessionStorage.getItem('tech_name') || '',
       loggedIn: sessionStorage.getItem('tech_logged_in') === 'true',
       online: sessionStorage.getItem('tech_online') !== 'false',
+      photo: readTechPhoto(id),
     };
   } catch {
-    return { id: null, name: '', loggedIn: false, online: true };
+    return { id: null, name: '', loggedIn: false, online: true, photo: '' };
   }
 }
 
@@ -72,6 +124,7 @@ export function clearTechSession() {
     sessionStorage.removeItem('tech_logged_in');
     sessionStorage.removeItem('tech_id');
     sessionStorage.removeItem('tech_name');
+    sessionStorage.removeItem('tech_photo');
   } catch {
     /* ignore */
   }

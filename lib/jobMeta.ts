@@ -70,6 +70,20 @@ export function addDays(isoDate: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+export function isJobAccepted(status: string) {
+  return status === 'confirmed' || status === 'in_progress' || status === 'completed';
+}
+
+export function jobAreaLabel(notes: string | null | undefined) {
+  const { meta } = parseJobMeta(notes);
+  const city = (meta.city || meta.location_label || '').trim();
+  const pin = (meta.pincode || '').trim();
+  if (city && pin) return `${city} · ${pin}`;
+  if (city) return city;
+  if (pin) return pin;
+  return 'City after accept';
+}
+
 export function addonSum(addons?: JobAddon[]) {
   return (addons || []).reduce((s, a) => s + Number(a.price || 0), 0);
 }

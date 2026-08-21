@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, S
 import { router } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/lib/theme';
 import { useTechBookings } from '@/lib/useTechBookings';
-import { parseJobMeta } from '@/lib/jobMeta';
+import { jobAreaLabel, isJobAccepted, parseJobMeta } from '@/lib/jobMeta';
 
 export default function TechnicianBookingsTab() {
   const data = useTechBookings();
@@ -24,12 +24,16 @@ export default function TechnicianBookingsTab() {
           <Text style={styles.empty}>Koi booking nahi</Text>
         ) : (
           all.map((b) => {
+            const accepted = isJobAccepted(b.status);
             const stage = parseJobMeta(b.notes).meta.tech_stage || b.status;
             return (
               <TouchableOpacity key={b.id} style={styles.card} onPress={() => router.push(`/technician/job/${b.id}`)}>
                 <Text style={styles.name}>{b.service_name}</Text>
-                <Text style={styles.muted}>{b.customer_name} · {b.scheduled_date}</Text>
-                <Text style={styles.stage}>{String(stage).replace('_', ' ')}</Text>
+                <Text style={styles.muted}>
+                  {accepted ? `${b.customer_name} · ${b.address}` : `${b.customer_name.split(' ')[0]} · ${jobAreaLabel(b.notes)}`}
+                </Text>
+                <Text style={styles.muted}>{b.scheduled_date}</Text>
+                <Text style={styles.stage}>{accepted ? String(stage).replace('_', ' ') : 'Accept pending'}</Text>
               </TouchableOpacity>
             );
           })

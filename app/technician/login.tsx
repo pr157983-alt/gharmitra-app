@@ -69,6 +69,8 @@ export default function TechnicianLoginScreen() {
           sessionStorage.setItem('tech_logged_in', 'true');
           sessionStorage.setItem('tech_id', data.id);
           sessionStorage.setItem('tech_name', data.name);
+          const saved = localStorage.getItem(`tech_photo_${data.id}`);
+          if (saved) sessionStorage.setItem('tech_photo', saved);
         } catch {
           // ignore
         }

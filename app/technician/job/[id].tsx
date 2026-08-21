@@ -14,16 +14,17 @@ import {
   Linking,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Phone, MapPin, Check, Navigation } from 'lucide-react-native';
+import { ArrowLeft, Phone, MapPin, Check, Navigation, Star } from 'lucide-react-native';
 import { supabase, Booking } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/lib/theme';
-import { JobMeta, jobBillTotals, parseJobMeta, writeJobMeta } from '@/lib/jobMeta';
+import { JobMeta, isJobAccepted, jobAreaLabel, jobBillTotals, parseJobMeta, writeJobMeta } from '@/lib/jobMeta';
 import {
   ensureLocationPermission,
   getCurrentPosition,
   readTechSession,
   watchPosition,
 } from '@/lib/techSession';
+import { markJobRejected } from '@/lib/useTechBookings';
 
 const STAGES: { key: NonNullable<JobMeta['tech_stage']>; label: string }[] = [
   { key: 'accepted', label: 'Accepted' },
@@ -50,6 +51,8 @@ export default function TechnicianJobScreen() {
   const [part2, setPart2] = useState('');
   const [amt2, setAmt2] = useState('');
   const [tick, setTick] = useState(false);
+  const [svcRating, setSvcRating] = useState(0);
+  const [busy, setBusy] = useState(false);
   const locationWatchRef = useRef<{ remove: () => void } | null>(null);
 
   const load = useCallback(async () => {
@@ -64,6 +67,8 @@ export default function TechnicianJobScreen() {
       setPart2(parts[1]?.name || '');
       setAmt2(parts[1] ? String(parts[1].amount) : '');
       setTick(!!meta.complete_tick);
+      const { data: svc } = await supabase.from('services').select('rating').eq('id', data.service_id).maybeSingle();
+      setSvcRating(Number(svc?.rating || 0));
     }
     setLoading(false);
   }, [id]);
@@ -113,6 +118,28 @@ export default function TechnicianJobScreen() {
   };
 
   useEffect(() => () => { stopShare(); }, []);
+
+  const acceptHere = async () => {
+    const techId = readTechSession().id;
+    if (!techId || !booking) return;
+    setBusy(true);
+    const parsed = parseJobMeta(booking.notes);
+    const notes = writeJobMeta({ ...parsed.meta, tech_stage: 'accepted' }, parsed.userNotes);
+    await supabase.from('bookings').update({ technician_id: techId, status: 'confirmed', notes }).eq('id', booking.id);
+    setBusy(false);
+    load();
+  };
+
+  const rejectHere = async () => {
+    if (!booking) return;
+    setBusy(true);
+    markJobRejected(booking.id);
+    if (booking.technician_id) {
+      await supabase.from('bookings').update({ technician_id: null }).eq('id', booking.id).eq('status', 'pending');
+    }
+    setBusy(false);
+    router.replace('/technician/(tabs)');
+  };
 
   const persist = async (patch: Partial<JobMeta>, status?: string) => {
     if (!booking) return false;
@@ -217,6 +244,7 @@ export default function TechnicianJobScreen() {
   }
 
   const { meta, userNotes } = parseJobMeta(booking.notes);
+  const revealed = isJobAccepted(booking.status);
   const stage = meta.tech_stage || (booking.status === 'completed' ? 'completed' : booking.status === 'in_progress' ? 'started' : 'accepted');
   const idx = stageIndex(stage);
   const bill = jobBillTotals(booking.total_amount, meta);
@@ -232,8 +260,36 @@ export default function TechnicianJobScreen() {
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.h1}>{booking.service_name}</Text>
-        <Text style={styles.cust}>{booking.customer_name}</Text>
+        <View style={styles.stars}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Star key={i} size={14} color={Colors.accent[500]} fill={i <= Math.round(svcRating) ? Colors.accent[500] : 'transparent'} />
+          ))}
+          <Text style={styles.starTxt}>{svcRating ? svcRating.toFixed(1) : 'New'}</Text>
+        </View>
+        <Text style={styles.cust}>{revealed ? booking.customer_name : booking.customer_name.split(' ')[0]}</Text>
+        <Text style={styles.slot}>{booking.scheduled_date} · {booking.scheduled_time}</Text>
 
+        {!revealed && (
+          <View style={styles.lock}>
+            <Text style={styles.lockTitle}>{jobAreaLabel(booking.notes)}</Text>
+            <Text style={styles.lockTxt}>Phone, ghar ka address aur map Accept ke baad khulega.</Text>
+            {busy ? (
+              <ActivityIndicator color={Colors.primary[600]} />
+            ) : (
+              <View style={styles.row}>
+                <TouchableOpacity style={styles.call} onPress={acceptHere}>
+                  <Text style={styles.callTxt}>ACCEPT</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.loc} onPress={rejectHere}>
+                  <Text style={styles.locTxt}>REJECT</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {revealed && (
+          <>
         <View style={styles.row}>
           <TouchableOpacity
             style={styles.call}
@@ -370,6 +426,8 @@ export default function TechnicianJobScreen() {
           </>
         )}
         {done && <Text style={styles.done}>This job is completed.</Text>}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -383,6 +441,11 @@ const styles = StyleSheet.create({
   navTitle: { fontSize: 18, fontWeight: '800' },
   scroll: { padding: Spacing.lg, paddingBottom: 48 },
   h1: { fontSize: 20, fontWeight: '800', color: Colors.neutral[900] },
+  stars: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
+  starTxt: { marginLeft: 6, fontWeight: '700', color: Colors.neutral[700] },
+  lock: { marginTop: 16, backgroundColor: Colors.accent[50], borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.accent[200] },
+  lockTitle: { fontWeight: '800', color: Colors.neutral[900], fontSize: 15 },
+  lockTxt: { marginTop: 6, color: Colors.neutral[600], fontSize: 13, marginBottom: 8 },
   h2: { fontSize: 13, fontWeight: '800', color: Colors.neutral[600], marginTop: 20, marginBottom: 8, textTransform: 'uppercase' },
   cust: { fontSize: 15, color: Colors.neutral[600], marginTop: 4 },
   row: { flexDirection: 'row', gap: 8, marginTop: 12 },
