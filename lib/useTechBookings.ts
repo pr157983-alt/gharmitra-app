@@ -4,6 +4,10 @@ import { supabase, Booking } from '@/lib/supabase';
 import { parseJobMeta } from '@/lib/jobMeta';
 import { readTechSession } from '@/lib/techSession';
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function rejectedIds(): string[] {
   try {
     return JSON.parse(sessionStorage.getItem('tech_rejected_jobs') || '[]');
@@ -35,23 +39,27 @@ export function useTechBookings() {
       setRefreshing(false);
       return;
     }
-    const [{ data: mine, error: e1 }, { data: open, error: e2 }] = await Promise.all([
-      supabase.from('bookings').select('*').eq('technician_id', id).order('scheduled_date', { ascending: true }),
-      supabase.from('bookings').select('*').is('technician_id', null).eq('status', 'pending').order('created_at', { ascending: false }),
-    ]);
-    if (e1 || e2) Alert.alert('Error', 'Jobs load nahi ho payi. Refresh karein.');
-    const mineRows = mine || [];
-    const openRows = open || [];
-    setBookings(mineRows);
-    setPool(openRows);
-    const serviceIds = [...new Set([...mineRows, ...openRows].map((b) => b.service_id).filter(Boolean))];
-    if (serviceIds.length) {
-      const { data: svcs } = await supabase.from('services').select('id, rating, reviews_count').in('id', serviceIds);
-      const map: Record<string, { rating: number; reviews: number }> = {};
-      (svcs || []).forEach((s: { id: string; rating: number; reviews_count: number }) => {
-        map[s.id] = { rating: Number(s.rating || 0), reviews: Number(s.reviews_count || 0) };
-      });
-      setServiceRatings(map);
+    try {
+      const [{ data: mine, error: e1 }, { data: open, error: e2 }] = await Promise.all([
+        supabase.from('bookings').select('*').eq('technician_id', id).order('scheduled_date', { ascending: true }),
+        supabase.from('bookings').select('*').is('technician_id', null).eq('status', 'pending').order('created_at', { ascending: false }),
+      ]);
+      if (e1 || e2) Alert.alert('Error', 'Jobs load nahi ho payi. Refresh karein.');
+      const mineRows = mine || [];
+      const openRows = open || [];
+      setBookings(mineRows);
+      setPool(openRows);
+      const serviceIds = [...new Set([...mineRows, ...openRows].map((b) => b.service_id).filter(Boolean))];
+      if (serviceIds.length) {
+        const { data: svcs } = await supabase.from('services').select('id, rating, reviews_count').in('id', serviceIds);
+        const map: Record<string, { rating: number; reviews: number }> = {};
+        (svcs || []).forEach((s: { id: string; rating: number; reviews_count: number }) => {
+          map[s.id] = { rating: Number(s.rating || 0), reviews: Number(s.reviews_count || 0) };
+        });
+        setServiceRatings(map);
+      }
+    } catch {
+      Alert.alert('Error', 'Jobs load nahi ho payi. Refresh karein.');
     }
     setLoading(false);
     setRefreshing(false);

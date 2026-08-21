@@ -266,7 +266,7 @@ export default function TechnicianJobScreen() {
           ))}
           <Text style={styles.starTxt}>{svcRating ? svcRating.toFixed(1) : 'New'}</Text>
         </View>
-        <Text style={styles.cust}>{revealed ? booking.customer_name : booking.customer_name.split(' ')[0]}</Text>
+        <Text style={styles.cust}>{revealed ? booking.customer_name : (booking.customer_name || 'Customer').split(' ')[0]}</Text>
         <Text style={styles.slot}>{booking.scheduled_date} · {booking.scheduled_time}</Text>
 
         {!revealed && (

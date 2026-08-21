@@ -155,7 +155,7 @@ export default function TechnicianHomeScreen() {
                   ) : (
                     <Text style={styles.muted}>Nayi service · rating limited</Text>
                   )}
-                  <Text style={styles.muted}>{j.customer_name.split(' ')[0]} · {j.scheduled_date} {j.scheduled_time}</Text>
+                  <Text style={styles.muted}>{(j.customer_name || 'Customer').split(' ')[0]} · {j.scheduled_date} {j.scheduled_time}</Text>
                   <Text style={styles.muted}>{jobAreaLabel(j.notes)}</Text>
                   <Text style={styles.hint}>Full address Accept ke baad dikhega</Text>
                   <Text style={styles.amt}>₹{j.total_amount}</Text>

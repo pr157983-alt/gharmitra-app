@@ -30,7 +30,7 @@ export default function TechnicianBookingsTab() {
               <TouchableOpacity key={b.id} style={styles.card} onPress={() => router.push(`/technician/job/${b.id}`)}>
                 <Text style={styles.name}>{b.service_name}</Text>
                 <Text style={styles.muted}>
-                  {accepted ? `${b.customer_name} · ${b.address}` : `${b.customer_name.split(' ')[0]} · ${jobAreaLabel(b.notes)}`}
+                  {accepted ? `${b.customer_name || 'Customer'} · ${b.address}` : `${(b.customer_name || 'Customer').split(' ')[0]} · ${jobAreaLabel(b.notes)}`}
                 </Text>
                 <Text style={styles.muted}>{b.scheduled_date}</Text>
                 <Text style={styles.stage}>{accepted ? String(stage).replace('_', ' ') : 'Accept pending'}</Text>
