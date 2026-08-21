@@ -27,7 +27,7 @@ export default function TechnicianLoginScreen() {
       if (typeof window !== 'undefined' && sessionStorage.getItem('tech_logged_in') === 'true') {
         const techId = sessionStorage.getItem('tech_id');
         if (techId) {
-          router.replace('/technician/dashboard');
+          router.replace('/technician/(tabs)');
         }
       }
     } catch {
@@ -72,7 +72,7 @@ export default function TechnicianLoginScreen() {
         } catch {
           // ignore
         }
-        router.replace('/technician/dashboard');
+        router.replace('/technician/(tabs)');
       } else {
         setError('Galat phone ya PIN. Demo: 9876543210 / 1234');
         setPin('');
